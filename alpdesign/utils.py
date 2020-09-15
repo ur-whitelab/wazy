@@ -4,7 +4,7 @@ import random
 
 # expect to be pointed to a single big .npy file with all the
 # one-hot encoded peptides in it
-def load_data(filename, labels_filename=None, withheld_percent=0.20):
+def load_data(filename, labels_filename=None):
     with open(filename, 'rb') as f:
         all_peps = np.load(f)
     
