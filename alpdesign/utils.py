@@ -1,6 +1,8 @@
 import numpy as np
 import tensorflow as tf
 import random
+import jax
+import jax.numpy as jnp
 
 # expect to be pointed to a single big .npy file with all the
 # one-hot encoded peptides in it
@@ -39,3 +41,33 @@ def prepare_data(positive_filename, negative_filenames, weights = None):
     labels[:len(positive_peps)] += 1. # positive labels are 1
 
     return tf.data.Dataset.from_tensor_slices((peps, labels))
+
+ALPHABET_Unirep = ['-','M','R','H','K','D','E','S','T','N','Q','C','U','G','P','A','V','I','F','Y','W','L','O','X','Z','B','J','start','stop']
+ALPHABET = ['A','R','N','D','C','Q','E','G','H','I', 'L','K','M','F','P','S','T','W','Y','V']
+def vectorize(pep):
+  '''Takes a string of amino acids and encodes it to an L x 20 one-hot vector,
+    where L is the length of the peptide.'''
+  vec = jnp.zeros((len(pep), 20))
+  for i, letter in enumerate(pep):
+    vec = jax.ops.index_update(vec, jax.ops.index[i, ALPHABET.index(letter)], 1.)
+      #vec[i][ALPHABET.index(letter)] += 1.
+  return vec
+
+def vec_to_seq(pep_vector):  # From Rainier's code
+  seq = ''
+  # expect a 2D numpy array (pep_length x 20), give the string it represents
+  for letter in pep_vector[:int(jnp.sum(pep_vector))]:
+    idx = jnp.argmax(letter)
+    if letter[idx] == 0:
+      break
+    seq += ALPHABET[idx]
+  return seq
+
+def index_trans(oh, alphabet, alphabet_unirep):
+  matrix = jnp.zeros((len(alphabet), 26))
+  for idx, aa in enumerate(alphabet):
+    matrix = jax.ops.index_update(matrix, tuple([idx, alphabet_unirep.index(aa)]), 1.)
+    #matrix[idx, alphabet_unirep.index(aa)] = 1.
+  #print(matrix)
+  oh_unirep = jnp.einsum('ij,jk->ik', oh, matrix)
+  return oh_unirep

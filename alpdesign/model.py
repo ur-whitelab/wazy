@@ -6,9 +6,9 @@ from jax.experimental import stax
 from jax.experimental import optimizers
 from jax.experimental.stax import (BatchNorm, Conv, Dense, Flatten,
                                    Relu, LogSoftmax, Sigmoid)
-# from jax_unirep.layers import AAEmbedding, mLSTM, mLSTMAvgHidden
-# from jax_unirep.utils import load_params, load_embedding, seq_to_oh
-# from jax_unirep.utils import *
+from jax_unirep.layers import AAEmbedding, mLSTM, mLSTMAvgHidden
+from jax_unirep.utils import load_params, load_embedding, seq_to_oh
+from jax_unirep.utils import *
 from jax_unirep import get_reps
 import matplotlib.pyplot as plt
 
@@ -128,7 +128,8 @@ def maxent_loss(u, new_model): # u is the unirep input
 
 def maxent_optimize(init_seq, model, iternum=1000, lr=0.01):
     # switch to unirep space
-    init_rep, _, _, = get_reps(init_seq).reshape((1900))
+    init_rep, _, _, = get_reps(init_seq)
+    init_rep.reshape((1900))
     new_rep = init_rep
     for _ in range(iternum):
         new_rep -= lr * jax.grad(maxent_loss, 0)(new_rep, model)
