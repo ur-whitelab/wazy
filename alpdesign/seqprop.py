@@ -36,8 +36,8 @@ def norm_layer(logits, r, b):
   epsilon = 1e-3
   M, N = jnp.shape(logits)
   miu = jnp.sum(logits) / (M*N)
-  std = jnp.sqrt(jnp.sum((logits - miu)**2) / (M*N)) + epsilon
-  norm_logits = (logits - miu) / std**2
+  std = jnp.sqrt(jnp.sum((logits - miu)**2) / (M*N))
+  norm_logits = (logits - miu) / (std**2 + epsilon)
   scaled_logits = norm_logits * r + b
   return scaled_logits
 
@@ -67,14 +67,14 @@ def loss_func(target_rep, sampled_vec):
 def train_seqprop(key, target, logits, r, b, iter_num=20, l_rate = 1):
   loss_trace = []
   for _ in range(iter_num):
-      sampled_vec, norm_logits = forward_seqprop(key, logits, r, b)
-      grad_values = backward_seqprop(key, target, sampled_vec, norm_logits, r)
-      loss = loss_func(target, sampled_vec)
-      loss_trace.append(loss)
-      print(loss_trace[-1])
-      logits_grad, r_grad, b_grad = grad_values
-      # update
-      logits = logits - l_rate * logits_grad
-      r = r - l_rate * r_grad
-      b = b - l_rate * b_grad
+    sampled_vec, norm_logits = forward_seqprop(key, logits, r, b)
+    grad_values = backward_seqprop(key, target, sampled_vec, norm_logits, r)
+    loss = loss_func(target, sampled_vec)
+    loss_trace.append(loss)
+    print(loss_trace[-1])
+    logits_grad, r_grad, b_grad = grad_values
+    # update
+    logits = logits - l_rate * logits_grad
+    r = r - l_rate * r_grad
+    b = b - l_rate * b_grad
   return sampled_vec, loss_trace

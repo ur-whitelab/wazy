@@ -42,7 +42,9 @@ def prepare_data(positive_filename, negative_filenames, weights = None):
 
     return tf.data.Dataset.from_tensor_slices((peps, labels))
 
-ALPHABET_Unirep = ['-','M','R','H','K','D','E','S','T','N','Q','C','U','G','P','A','V','I','F','Y','W','L','O','X','Z','B','J','start','stop']
+
+ALPHABET_Unirep = ['-','M','R','H','K','D','E','S','T','N','Q','C','U','G','P','A','V','I','F','Y','W','L','O','X','start','stop']
+#ALPHABET_Unirep = ['-','M','R','H','K','D','E','S','T','N','Q','C','U','G','P','A','V','I','F','Y','W','L','O','X','Z','B','J','start','stop']
 ALPHABET = ['A','R','N','D','C','Q','E','G','H','I', 'L','K','M','F','P','S','T','W','Y','V']
 def vectorize(pep):
   '''Takes a string of amino acids and encodes it to an L x 20 one-hot vector,
@@ -50,7 +52,6 @@ def vectorize(pep):
   vec = jnp.zeros((len(pep), 20))
   for i, letter in enumerate(pep):
     vec = jax.ops.index_update(vec, jax.ops.index[i, ALPHABET.index(letter)], 1.)
-      #vec[i][ALPHABET.index(letter)] += 1.
   return vec
 
 def vec_to_seq(pep_vector):  # From Rainier's code
@@ -69,5 +70,8 @@ def index_trans(oh, alphabet, alphabet_unirep):
     matrix = jax.ops.index_update(matrix, tuple([idx, alphabet_unirep.index(aa)]), 1.)
     #matrix[idx, alphabet_unirep.index(aa)] = 1.
   #print(matrix)
+  start_char = jnp.zeros((1, 26))
+  start_char = jax.ops.index_update(start_char, (0, 24), 1.)
   oh_unirep = jnp.einsum('ij,jk->ik', oh, matrix)
+  oh_unirep = jnp.vstack((start_char, oh_unirep))
   return oh_unirep
