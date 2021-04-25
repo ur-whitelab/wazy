@@ -18,8 +18,9 @@ ALPHABET = ['A','R','N','D','C','Q','E','G','H','I', 'L','K','M','F','P','S','T'
 
 @jax.partial(jax.custom_jvp, nondiff_argnums=(0,))
 def disc_ss(key, logits):
-  #soft_prob = jax.nn.softmax(logits)
-  return jax.nn.one_hot(jax.random.categorical(key, logits), logits.shape[-1])
+  soft_prob = jax.nn.softmax(logits)
+  sampled_onehot = jax.nn.one_hot(jax.random.categorical(key, logits), logits.shape[-1])
+  return jnp.ceil(sampled_onehot * soft_prob)
 
 # customized gradient for back propagation
 @disc_ss.defjvp
