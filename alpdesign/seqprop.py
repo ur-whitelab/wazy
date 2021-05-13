@@ -52,8 +52,11 @@ def forward_seqprop(key, logits, r, b):
 
 def backward_seqprop(key, target, sampled_vec, norm_logits, r):
   d_loss = jax.grad(loss_func, 1)(target, sampled_vec)  # chain rule for loss_func
+  #print(d_loss)
   d_disc_ss = jax.jacfwd(disc_ss, 1)(key, norm_logits)  # chain rule for discrete sampler, should return a matrix with same dimension of logits
+  #print(d_disc_ss)
   logits_grad = jnp.sum(jnp.einsum('ik,ijik->ijk', d_loss, d_disc_ss), axis=-1) * r  # equantion in seqprop paper, gradient for logits
+  #print(logits_grad)
   r_grad = jnp.sum(jnp.einsum('ik,ijik,ij->ijk', d_loss, d_disc_ss, norm_logits))  # equation in seqprop paper, gradient for r (normalization layer)
   b_grad = jnp.sum(jnp.einsum('ik,ijik->ijk', d_loss, d_disc_ss))  # equation in seqprop paper, gradient for b (normalization layer)
   grad_values = (logits_grad, r_grad, b_grad)
@@ -62,20 +65,37 @@ def backward_seqprop(key, target, sampled_vec, norm_logits, r):
 def loss_func(target_rep, sampled_vec):
   sampled_vec_unirep = index_trans(sampled_vec, ALPHABET, ALPHABET_Unirep)
   h_avg= differentiable_jax_unirep(sampled_vec_unirep)
-  loss = jnp.mean((target_rep - h_avg)**2)
+  loss = jnp.mean(((target_rep - h_avg)/target_rep)**2)
   return loss
 
-def train_seqprop(key, target, logits, r, b, iter_num=20, l_rate = 1):
+def train_seqprop(key, target, logits, r, b, iter_num=20, l_rate = 1e-1):
   loss_trace = []
   for _ in range(iter_num):
     sampled_vec, norm_logits = forward_seqprop(key, logits, r, b)
     grad_values = backward_seqprop(key, target, sampled_vec, norm_logits, r)
     loss = loss_func(target, sampled_vec)
     loss_trace.append(loss)
-    print(loss_trace[-1])
     logits_grad, r_grad, b_grad = grad_values
     # update
     logits = logits - l_rate * logits_grad
     r = r - l_rate * r_grad
     b = b - l_rate * b_grad
+    if _%2 == 0:
+      print(_)
+      print(loss_trace[-1])
+      print(logits_grad)
   return sampled_vec, loss_trace
+
+target_char = ['G','I','G','A','V','L','K','V','L','T','T','G','L','P','A','L','I','S','W','I','K','R','K','R','Q','Q']
+oh_vec = vectorize(target_char)
+target_seq = ['GIGAVLKVLTTGLPALISWIKRKRQQ']
+target_rep = get_reps(target_seq)[0]
+key = jax.random.PRNGKey(37)
+key, logits_key, r_key, b_key = jax.random.split(key, num=4)
+logits = jax.random.normal(logits_key, shape=jnp.shape(oh_vec))
+r = jax.random.normal(r_key)
+b = jax.random.normal(b_key)
+#r= 1
+#b = 0
+sampled_vec, loss_trace = train_seqprop(key, target_rep, logits, r, b, iter_num = 10)
+print(vec_to_seq(sampled_vec))
