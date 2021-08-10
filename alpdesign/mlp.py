@@ -9,127 +9,120 @@ from jax_unirep.utils import load_params, load_embedding, seq_to_oh
 from jax_unirep.utils import *
 from jax_unirep import get_reps
 import matplotlib.pyplot as plt
+from jax.experimental import optimizers
 
 # create a random seed
 key = jax.random.PRNGKey(0)
 
+class EnsembleBlock(hk.Module):
+    def __init__(self, config, name=None):
+        super().__init__(name=name)
+        self.config = config
+       
+    def __call__(self, x): # x is of shape ([ensemble_num, *seqs.shape])
+        out = jnp.array([hk.nets.MLP(self.config.shape)(x[i]) for i in range(self.config.parallel_num)])
+        return out
+
+class Config(object):
+    def __init__(self):
+        self.shape = [2]
+        self.parallel_num = 5
+
 def forward(x):
-    mlp = hk.nets.MLP([1900, 256, 32, 2])
-    return mlp(x)
+    module = EnsembleBlock(config)
+    return module(x)
 
-forward  = hk.transform(forward)
-
-class MLP:
-
-    def __init__(self, key, forward):
-        self.key = key
-        self.forward = forward
-
-    def deep_ensemble_loss(self, params, ins, labels):
-        outs = self.forward.apply(params, self.key, ins)
-        means = outs[0]
-        stds = outs[1]
-        n_log_likelihoods = 0.5*jnp.log(jnp.abs(stds)) + 0.5*(labels-means)**2/jnp.abs(stds)
-
-        return n_log_likelihoods[0]
-
-    def adv_loss_func(self, params, seqs, labels, loss_func):
-        epsilon = 1e-3
-        grad_inputs = jax.grad(loss_func, 1)(params, seqs, labels)
-        seqs_ = seqs + epsilon * jnp.sign(grad_inputs)
-
-        return loss_func(params, seqs, labels) + loss_func(params, seqs_, labels)
-
-    def train_mlp(self, seqs, labels):
-        learning_rate = 1e-2
-        n_training_steps = 25
-        opt_init, opt_update = optax.chain(
-            optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-4),
-            optax.scale(-learning_rate) # minus sign -- minimizing the loss
-        )
-        self.key, key_ = jax.random.split(self.key, num=2)
-        self.params = self.forward.init(self.key, jax.random.normal(key_, shape=(1900,)))
-        opt_state = opt_init(self.params)
-
-        loss_trace=[]
-        for step in range(n_training_steps):
-            loss, grad=jax.value_and_grad(self.adv_loss_func)(self.params, seqs, labels, self.deep_ensemble_loss)
-            loss_trace.append(loss)
-
-            updates, opt_state = opt_update(grad, opt_state, self.params)
-            self.params = optax.apply_updates(self.params, updates)
-        outs = self.forward.apply(self.params, self.key, seqs)
-
-        #joint_outs = model_stack(outs)
-        return loss_trace, outs
-
-    def batch(self, seqs, labels):
-        self.ensemble_seqs = jnp.tile(seqs, (5, 1 ,1))
-        self.ensemble_labels = jax.lax.broadcast(labels, (5,))[...,jnp.newaxis]
-        self.b_training_mlp = jax.vmap(self.train_mlp, (0, 0), (0, 0))
-        self.bb_training_mlp = jax.vmap(self.b_training_mlp, (0, 0), (0, 0))
+def adv_loss_func(idx, forward, params, seqs, labels):
+    def deep_ensemble_loss(idx, forward, params, seqs, labels):
+        out = forward.apply(params, seqs)
+        means = out[idx,0]
+        stds = out[idx,1]
+        n_log_likelihoods = 0.5*jnp.log(jnp.abs(stds)) + 0.5*(labels[idx]-means)**2/jnp.abs(stds)
+        return n_log_likelihoods
+    epsilon = 1e-3
+    grad_inputs= jax.grad(deep_ensemble_loss, 3)(idx, forward, params, seqs, labels)[idx]
+    seqs_ = seqs + epsilon * jnp.sign(grad_inputs)
+    return deep_ensemble_loss(idx, forward, params, seqs, labels) + deep_ensemble_loss(idx, forward, params, seqs_, labels)
 
 
-    def model_stack(self):
-        mu = jnp.mean(self.outs[..., 0], axis=0)
-        std = jnp.mean(self.outs[...,1] + self.outs[...,0]**2,axis=0) - mu**2
-        return mu, std
-
-    def call_train(self):
-        self.loss_trace, self.outs = self.bb_training_mlp(self.ensemble_seqs, self.ensemble_labels) # batched
-        self.joint_outs = self.model_stack()
-
-
-    def bayesian_ei(self):
-        mu, std = self.joint_outs
-        best = jnp.max(mu)
-        epsilon = 0.1
-        z = (mu-best-epsilon)/std
-        return (mu-best-epsilon)*norm.cdf(z) + std*norm.pdf(z)
-
-
-seqs = ['MSADDGIVYCQMRQGPWEFHIVTVESSAYDWVVVPGARIALDKYNAACEQHWSCILRRGIDQKPYAPDMLKCQCSDMCHPSDSFTWEIDAEAWYCNTDNLFTGIALYKNNDDYPDWYPIRCLKHKNVTAAQVPLVHFNDNKFTHHVHNDMPACDFKFFKTPTVRHACQFGSIYHSKQSRMDYSDLMQDEKAKHLKESHNVVPDDGIIIDPYMDILFGGRMNNREHCAKNE',
-        'EKMHIKESATRMGFQYEYKLPYCIWAFIIGRAWHFVSLHGDQWDCWKMTFVIYSACSNGHIDGCEVQHANLSSGVLPARWFDAFQQNMKGFHKMKCGGFCTYAFLWGLAMRIYVRNMGNLAIYQNGGTSEWLTEFWYRLAGAVWPFKQFSINGECEHFWWSFHPFTLFDNPPAKDRNVTAYLHFDAHFYSIAMVWLMSPVVKGDSPVNCCAVDVEQSGESWALLNNWCAP',
-        'HSFHKYKHGNWKSEGDQCLKVGQLRDECPQVNTPMYCSWGPHYFSIFHWIIPVAKAYHMLHNIEQQVYRCHWQERYKELHDATKTHQLEWSFGKSVWCAHCKPYIGWYRSPAGWHMPIKPPATKNLWVVRHKSKRKEGTISWENTLTCVWFHEICYGHGVCHQVHPWVVDSNEEYEMQWMETEVGECSYPAERQGAWYSFTQQQKWICIHVCNMSSGRVFCWYVLQLFRN',
-        'LDHAVLKILQAMGPWNNRVEHPRLGKRSTEWPAAIYEGEPRWRLKCDTTATYYKAFETRWYNCHMTLTCWWHGATIRSKLTTMCMMVTNGYRDFYRYNDWKGRKATKHHPMVCIYEILWIAFMGCLHMWAGARVSKIWVGFCIFFASCLQMSPLKDWHNKCAFGRNNPLGMKGWGMMIGNSFCHIVHEMDNKYYAGAPVDEPFMYNQQVFGFGAMHCLCMADFCNEWGIQ',
-        'PERHHYIGFHCYMQLDAIQQNPHWNAHVLFRAFDYVSNYWTWITMYDKYQGFLGIYVTSCKVHEHGACKHCHWPICYDCGQHADKMLWRKSFALHGQSHAYRPLWDRDLTGVLGISIDLNQGIKVAEAEGEILYCNVTDMTVMMHQSVGVFWCHDMAYPQWTDWYSSDNMMNSIPEISHMKNYRVTMVHEPLFIWECVSEWTENAEHEGHLITVGSTGGKWDTGMEREVM',
-        'DPSQTIHCGTTGMSWGTMFKRSYILIIRYGTPEATCPCIVNCQIVVYWGCMFKKDRDPRGTPIQSTENFFKHAMMEPSYAGGTAHMEKEIEYRSQDSWHAYFSYWVKVWCYVCIALSQIPNVAHHGMHLHASPEDKKCANNWRFRYVAFIRIAHGCSWCYRECYNFRYDRYIAWNPVHLESVPEWWAHPAFEIVKDTVDDNQYSGADERQGDPIGGQPCLLCATWEDSWT',
-        'LIDLFSLTRKFSRMPCRHNMNESYKEEWCETNNVKEYPHEQLLDKRYDIITLDGCKRMYCRSESQRITELHFIRYNMLCWPDRCIPLQYSQYESNMPPPMMRMWGCYHFGTLMFMSYAMPPTGEKREIVGGKEDHSGDLEDAFTDEDFNMDPAHQDYRHIAGTWHEPMFEIRMRYELTCNNMWSPIYANNAGMKQLTICNNDKICPTEGRRRQREIFNYKLHGRDQCQHI',
-        'SCDVGPHPLHGQCTGMAKQVMETANIPQCPIDDHVTRATMGLIDAGACDRDRVCVREIWNVYYDKSTMKIIMDPPSDTCKHKSFYGDMMSHQQMGWLSECIIANMQHNLPWQLWESWMIHSEICMIKQRKVMMFCGIQSKYTEDFARFHPFILANTQYIIFKRPTTWPRVYAFLHRCMVLGWSAYGMTAMIPNTKETIKLAHCEKWPLTGSYTPSFVIFDGWLARKCQWP',
-        'DWIEHVHTFWVLMFISNYPQIVCGLINQIEPWKSKFHSLAGFNQGCQCEKNYQGPIQAINGINQLVTITTPINNQENVDKKPHPGSVHTKSDAITLRFNQGVHNIFMWDMATQGRASIPFLNNMNGGGLTDYSWEQVVTCHCHMTNDLELDPQMLYMWWIVSANAWMVNGMRRQHMACHWAQWEGFRWPRYVQSVPMKVLLTTQKIHWMQYFREKFCFILMKWQGYWYTV',
-        'RHWRAPLLMYRDKEVQITWHFRFMYHCDALTCSEVHCHARNFMVFGYSTPQNYNPVILYWVTWANTCLTPKGAYCARQMRMYATVTMSKINQMTITYLVDRQRQHWGLAFRSDNTCNHKWYLKHRCKVWNWGWLIDCYDLDRNLPKQVSRNQSSKSLRDLFNYIHYHWAMLPINIYCYSGDIWTTISTDDQFHIPTFIPCGKTVHEDLQPYEMCGMWHQCEDADYTMQPV',
-]
-labels = jnp.array([25.217391304347824,
-                    15.652173913043478,
-                    23.478260869565219,
-                    22.173913043478262,
-                    23.913043478260871,
-                    24.782608695652176,
-                    26.956521739130434,
-                    17.391304347826086,
-                    19.130434782608695,
-                    26.521739130434781
-                   ])
-seqs = get_reps(seqs)[0]
-
-model = MLP(key, forward)
-model.batch(seqs, labels)
-model.call_train()
-
-print(model.joint_outs)
-
+def train(key, forward, seqs, labels):
+    def Merge(dict_list):
+        dict_out = {}
+        for key in dict_list[0]:
+            dict_out[key] = {}
+            dict_out[key]['b'] = jnp.sum(jnp.array([dict_[key]['b'] for dict_ in dict_list]), axis=0)
+            dict_out[key]['w'] = jnp.sum(jnp.array([dict_[key]['w'] for dict_ in dict_list]), axis=0)
+        map_out = hk.data_structures.to_immutable_dict(dict_out)
+        return map_out
+    learning_rate = 1e-2
+    n_step = 1
     
+    opt_init, opt_update = optax.chain(
+        optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-4),
+        optax.scale(-learning_rate) # minus sign -- minimizing the loss
+    )
 
+    key, key_ = jax.random.split(key, num=2)
+    params = forward.init(key, seqs)
+    opt_state = opt_init(params)
+
+    loss_trace=[]
+    for step in range(n_step):
+        print(step)
+        grad_list = []
+        for idx in range(5):
+        # need to compute loss/grad for different ensembles
+            grad=jax.grad(adv_loss_func, 2)(idx, forward, params, seqs, labels)
+            grad_list.append(hk.data_structures.to_mutable_dict(grad))
+        grads = Merge(grad_list)
+        updates, opt_state = opt_update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+    outs = forward.apply(params, seqs)
+
+    #joint_outs = model_stack(outs)
+    return params, outs
+
+def predict_fn(x):
+    x = jnp.tile(x, (5,1))
+    module = EnsembleBlock(config)
+    return module(x)
+
+def model_stack(out):
+    mu = jnp.mean(out[..., 0], axis=0)
+    std = jnp.mean(out[...,1] + outs[...,0]**2,axis=0) - mu**2
+    return mu, std
+
+def bayesian_ei(f, params, init_x, X):
+    out = f.apply(params, init_x)
+    joint_out = model_stack(out)
+    mu = joint_out[0]
+    std = joint_out[1]
+    mus = f.apply(params, X)[...,0]
+    best = jnp.max(mus)
+    epsilon = 0.01
+    z = (mu-best-epsilon)/std
+    return (mu-best-epsilon)*norm.cdf(z) + std*norm.pdf(z)
+
+def optimizer(f, params, init_x, seqs):
+    ei = bayesian_ei(f, params, init_x, seqs)
+    eta = 1e-2
+    n_steps = 100
+    opt_init, opt_update, get_params = optimizers.adam(step_size=1e-2, b1=0.8, b2=0.9, eps=1e-5)
+    opt_state = opt_init(init_x)
     
-
-
-
+    @jax.jit
+    def step(i, opt_state):
+        vec1900 = get_params(opt_state)
+        loss, g = jax.value_and_grad(bayesian_ei, 2)(f, params, vec1900, seqs)
+        return opt_update(i, g, opt_state), loss
     
-
-
-
-
-
     
+    for step_idx in range(10):
+        print(step_idx)
+        opt_state, loss = step(step_idx, opt_state)
+        print(loss)
+        
+    final_vec = get_params(opt_state)
+    return final_vec
 
 
