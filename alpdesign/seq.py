@@ -49,45 +49,11 @@ def forward_seqprop(key, logits, r, b):
   #sampled_vec_unirep = index_trans(sampled_vec, ALPHABET, ALPHABET_Unirep)
   return sampled_vec, norm_logits
 
-def backward_seqprop(key, target, sampled_vec, norm_logits, r):
-  #d_loss = jax.grad(loss_func, 1)(target, sampled_vec)  # chain rule for loss_func
-  d_loss = jax.grad(temp_loss_func)(sampled_vec)
-  #print(d_loss)
-  d_disc_ss = jax.jacfwd(disc_ss, 1)(key, norm_logits)  # chain rule for discrete sampler, should return a matrix with same dimension of logits
-  #print(d_disc_ss)
-  logits_grad = jnp.sum(jnp.einsum('ik,ijik->ijk', d_loss, d_disc_ss), axis=-1) * r  # equantion in seqprop paper, gradient for logits
-  #print(logits_grad)
-  r_grad = jnp.sum(jnp.einsum('ik,ijik,ij->ijk', d_loss, d_disc_ss, norm_logits))  # equation in seqprop paper, gradient for r (normalization layer)
-  b_grad = jnp.sum(jnp.einsum('ik,ijik->ijk', d_loss, d_disc_ss))  # equation in seqprop paper, gradient for b (normalization layer)
-  grad_values = (logits_grad, r_grad, b_grad)
-  return grad_values
-
-
 def loss_func(target_rep, sampled_vec):
   sampled_vec_unirep = index_trans(sampled_vec, ALPHABET, ALPHABET_Unirep)
   h_avg= differentiable_jax_unirep(sampled_vec_unirep)
   loss = jnp.mean(((target_rep - h_avg)/target_rep)**2)
   return loss
-
-def target_loss_func(sampled_vec):
-    def radio_column(jnp_list, center_idx):
-        length = len(jnp_list)
-        for i in range(length):
-            jnp_list = jax.ops.index_add(jnp_list, i, jnp.abs(i-center_idx))
-        jnp_list = jax.ops.index_update(jnp_list, center_idx, 0.)
-        return jnp_list
-    #target_char = ['A','R','N','D','C','Q','E','G','H','I','H','G','E','Q','C','D','C','Q','E','G','H','I','L','K','M','F']
-    
-    target_char = ['G','I','G','A','V','L','K','V','L','T','T','G','L','P','A','L','I','S','W','I','K','R','K','R','Q','Q']
-    oh_vec = vectorize(target_char)
-    N, M = oh_vec.shape
-    smooth_vec = jnp.zeros((26,20))
-    scan_vec = jnp.array([i for i in range(20)])
-    for i in range(N):
-        center_index = int(jnp.sum(jnp.multiply(scan_vec, oh_vec[i])))
-        smooth_vec = jax.ops.index_update(smooth_vec, i, radio_column(smooth_vec[i], center_index))
-    return jnp.sum(jnp.multiply(sampled_vec, smooth_vec))
-
 
 def packed_loss_func(key, logits, r, b, target_rep):
     sampled_vec, _ = forward_seqprop(key, logits, r, b)
@@ -118,17 +84,32 @@ def train_seqprop_adam(key, target_rep, init_logits, init_r, init_b, iter_num=20
     final_logits, final_r, final_b = get_params(opt_state)
     sampled_vec, _ = forward_seqprop(key, final_logits, final_r, final_b)
     return sampled_vec, final_logits, logits_trace
- 
 
-target_char = ['G','I','G','A','V','L','K','V','L','T','T','G','L','P','A','L','I','S','W','I','K','R','K','R','Q','Q']
-oh_vec = vectorize(target_char)
-target_seq = ['GIGAVLKVLTTGLPALISWIKRKRQQ']
-target_rep = get_reps(target_seq)[0]
-key = jax.random.PRNGKey(37)
-key, logits_key, r_key, b_key = jax.random.split(key, num=4)
-logits = jax.random.normal(logits_key, shape=jnp.shape(oh_vec))
-r = jax.random.normal(r_key)
-b = jax.random.normal(b_key)
-sampled_vec, final_logits, logits_trace = train_seqprop_adam(key, target_rep, logits, r, b, iter_num = 1000)
-#sampled_vec= train_seqprop_adam(key, target_rep, logits, r, b, iter_num = 1000)
-print(vec_to_seq(sampled_vec))
+def beam_search(sampled_vec, final_logits, logits_trace, loss_trace, beam_num=5):
+    indices = jnp.argsort(loss_trace[-1])[:beam_num]
+    beam_loss = jnp.take(loss_trace[-1], indices)
+    beam_loss_trace = []
+    beam_seqs = []
+    beam_logits = []
+    jax_loss_trace = jnp.array(loss_trace)
+    for idx in indices:
+        beam_seqs.append(vec_to_seq(sampled_vec[idx]))
+        beam_loss_trace.append(jax_loss_trace[:,idx])
+        beam_logits.append(final_logits[idx])
+    beam_loss_trace = jnp.array(beam_loss_trace)
+    beam_logits = jnp.array(beam_logits)
+    return beam_loss, beam_loss_trace, beam_logits, beam_seqs
+
+def beam_train(key, target_rep, logits, r, b, batch_size=16, bag_num=6):
+    beam_size = int(batch_size / 2)
+    beam_loss_traces = []
+    for bag_idx in range(bag_num):
+        batch_keys = jax.random.split(key, num=batch_size)
+        sampled_vec, final_logits, logits_trace, loss_trace = b_train_seqprop(batch_keys, target_rep, logits, r, b)
+        beam_loss, beam_loss_trace, beam_logits, beam_seqs = beam_search(sampled_vec, final_logits, logits_trace, loss_trace, beam_num=beam_size)
+        beam_loss_traces.append(beam_loss_trace)
+        # rebuild the batches for next bag
+        # add gaussian noise
+        pertubed_logits = jnp.add(beam_logits, jnp.mean(beam_logits)*jax.random.normal(key, shape=jnp.shape(beam_logits)))
+        logits = jnp.concatenate((beam_logits, pertubed_logits))
+    return beam_loss_traces, beam_loss, beam_seqs
