@@ -4,11 +4,6 @@ import jax.numpy as jnp
 import haiku as hk
 import jax.scipy.stats.norm as norm
 import optax
-from jax_unirep.layers import AAEmbedding, mLSTM, mLSTMAvgHidden
-from jax_unirep.utils import load_params, load_embedding, seq_to_oh
-from jax_unirep.utils import *
-from jax_unirep import get_reps
-import matplotlib.pyplot as plt
 from jax.experimental import optimizers
 
 # create a random seed
@@ -29,33 +24,25 @@ class Config(object):
         self.parallel_num = 5
 
 def forward(x):
-    module = EnsembleBlock(config)
+    module = EnsembleBlock(Config())
     return module(x)
 
-def adv_loss_func(idx, forward, params, seqs, labels):
-    def deep_ensemble_loss(idx, forward, params, seqs, labels):
+def adv_loss_func(forward, params, seqs, labels):
+    def deep_ensemble_loss(forward, params, seqs, labels):
         out = forward.apply(params, seqs)
-        means = out[idx,0]
-        stds = out[idx,1]
-        n_log_likelihoods = 0.5*jnp.log(jnp.abs(stds)) + 0.5*(labels[idx]-means)**2/jnp.abs(stds)
-        return n_log_likelihoods
+        means = out[...,0]
+        stds = out[...,1]
+        n_log_likelihoods = 0.5*jnp.log(jnp.abs(stds)) + 0.5*(labels-means)**2/jnp.abs(stds)
+        return jnp.sum(n_log_likelihoods, axis=0)
     epsilon = 1e-3
-    grad_inputs= jax.grad(deep_ensemble_loss, 3)(idx, forward, params, seqs, labels)[idx]
+    grad_inputs= jax.grad(deep_ensemble_loss, 2)(forward, params, seqs, labels)
     seqs_ = seqs + epsilon * jnp.sign(grad_inputs)
-    return deep_ensemble_loss(idx, forward, params, seqs, labels) + deep_ensemble_loss(idx, forward, params, seqs_, labels)
+    return deep_ensemble_loss(forward, params, seqs, labels) + deep_ensemble_loss(forward, params, seqs_, labels)
 
 
 def train(key, forward, seqs, labels):
-    def Merge(dict_list):
-        dict_out = {}
-        for key in dict_list[0]:
-            dict_out[key] = {}
-            dict_out[key]['b'] = jnp.sum(jnp.array([dict_[key]['b'] for dict_ in dict_list]), axis=0)
-            dict_out[key]['w'] = jnp.sum(jnp.array([dict_[key]['w'] for dict_ in dict_list]), axis=0)
-        map_out = hk.data_structures.to_immutable_dict(dict_out)
-        return map_out
     learning_rate = 1e-2
-    n_step = 1
+    n_step = 10
     
     opt_init, opt_update = optax.chain(
         optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-4),
@@ -66,58 +53,57 @@ def train(key, forward, seqs, labels):
     params = forward.init(key, seqs)
     opt_state = opt_init(params)
 
-    loss_trace=[]
-    for step in range(n_step):
-        print(step)
-        grad_list = []
-        for idx in range(5):
-        # need to compute loss/grad for different ensembles
-            grad=jax.grad(adv_loss_func, 2)(idx, forward, params, seqs, labels)
-            grad_list.append(hk.data_structures.to_mutable_dict(grad))
-        grads = Merge(grad_list)
-        updates, opt_state = opt_update(grads, opt_state, params)
+    def train_step(opt_state, params, seq, label):
+        seq_tile = jnp.tile(seq, (5,1))
+        label_tile = jnp.tile(label, 5)
+        grad = jax.grad(adv_loss_func, 1)(forward, params, seq_tile, label_tile)
+        updates, opt_state = opt_update(grad, opt_state, params)
         params = optax.apply_updates(params, updates)
-    outs = forward.apply(params, seqs)
+        return opt_state, params
 
+    for _ in range(n_step):
+        for i in range(len(seqs)):
+            seq = seqs[i]
+            label = labels[i]
+            opt_state, params = train_step(opt_state, params, seq, label)
+    outs = forward.apply(params, seqs)
     #joint_outs = model_stack(outs)
     return params, outs
 
 def predict_fn(x):
     x = jnp.tile(x, (5,1))
-    module = EnsembleBlock(config)
+    module = EnsembleBlock(Config())
     return module(x)
 
 def model_stack(out):
     mu = jnp.mean(out[..., 0], axis=0)
-    std = jnp.mean(out[...,1] + outs[...,0]**2,axis=0) - mu**2
+    std = jnp.mean(out[...,1] + out[...,0]**2,axis=0) - mu**2
     return mu, std
 
-def bayesian_ei(f, params, init_x, X):
+def bayesian_ei(f, params, init_x, Y):
     out = f.apply(params, init_x)
     joint_out = model_stack(out)
     mu = joint_out[0]
     std = joint_out[1]
-    mus = f.apply(params, X)[...,0]
-    best = jnp.max(mus)
+    #mus = f.apply(params, X)[...,0]
+    best = jnp.max(Y)
     epsilon = 0.01
     z = (mu-best-epsilon)/std
     return (mu-best-epsilon)*norm.cdf(z) + std*norm.pdf(z)
 
-def optimizer(f, params, init_x, seqs):
-    ei = bayesian_ei(f, params, init_x, seqs)
+def optimizer(f, params, init_x, labels):
     eta = 1e-2
     n_steps = 100
-    opt_init, opt_update, get_params = optimizers.adam(step_size=1e-2, b1=0.8, b2=0.9, eps=1e-5)
+    opt_init, opt_update, get_params = optimizers.adam(step_size=eta, b1=0.8, b2=0.9, eps=1e-5)
     opt_state = opt_init(init_x)
     
     @jax.jit
     def step(i, opt_state):
         vec1900 = get_params(opt_state)
-        loss, g = jax.value_and_grad(bayesian_ei, 2)(f, params, vec1900, seqs)
+        loss, g = jax.value_and_grad(bayesian_ei, 2)(f, params, vec1900, labels)
         return opt_update(i, g, opt_state), loss
     
-    
-    for step_idx in range(10):
+    for step_idx in range(n_steps):
         print(step_idx)
         opt_state, loss = step(step_idx, opt_state)
         print(loss)
