@@ -37,8 +37,13 @@ labels = jnp.array([25.217391304347824,
                    ])
 seqs = get_reps(seqs)[0]
 
-config = Config()
 key = jax.random.PRNGKey(0)
+forward = hk.without_apply_rng(hk.transform(forward))
+params, outs = train(key, forward, seqs, labels)
+init_x = jax.random.normal(key, shape=(1,1900))
+final_vec = optimizer(forward, params, init_x, labels)
+print(final_vec)
+
 
 
 

@@ -42,7 +42,7 @@ def adv_loss_func(forward, params, seqs, labels):
 
 def train(key, forward, seqs, labels):
     learning_rate = 1e-2
-    n_step = 10
+    n_step = 100
     
     opt_init, opt_update = optax.chain(
         optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-4),
@@ -53,19 +53,23 @@ def train(key, forward, seqs, labels):
     params = forward.init(key, seqs)
     opt_state = opt_init(params)
 
+    @jax.jit
     def train_step(opt_state, params, seq, label):
         seq_tile = jnp.tile(seq, (5,1))
         label_tile = jnp.tile(label, 5)
         grad = jax.grad(adv_loss_func, 1)(forward, params, seq_tile, label_tile)
         updates, opt_state = opt_update(grad, opt_state, params)
         params = optax.apply_updates(params, updates)
-        return opt_state, params
+        loss = adv_loss_func(forward, params, seq_tile, label_tile)
+        return opt_state, params, loss
 
     for _ in range(n_step):
+        print(_)
         for i in range(len(seqs)):
             seq = seqs[i]
             label = labels[i]
-            opt_state, params = train_step(opt_state, params, seq, label)
+            opt_state, params, loss = train_step(opt_state, params, seq, label)
+            print(loss)
     outs = forward.apply(params, seqs)
     #joint_outs = model_stack(outs)
     return params, outs
@@ -87,13 +91,13 @@ def bayesian_ei(f, params, init_x, Y):
     std = joint_out[1]
     #mus = f.apply(params, X)[...,0]
     best = jnp.max(Y)
-    epsilon = 0.01
+    epsilon = 0.1
     z = (mu-best-epsilon)/std
     return (mu-best-epsilon)*norm.cdf(z) + std*norm.pdf(z)
 
 def optimizer(f, params, init_x, labels):
     eta = 1e-2
-    n_steps = 100
+    n_steps = 10
     opt_init, opt_update, get_params = optimizers.adam(step_size=eta, b1=0.8, b2=0.9, eps=1e-5)
     opt_state = opt_init(init_x)
     
