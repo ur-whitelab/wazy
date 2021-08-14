@@ -4,6 +4,7 @@ import numpy as np
 import jax_unirep
 import haiku as hk
 import jax
+import jax.numpy as jnp
 
 
 class TestSeq(unittest.TestCase):
@@ -13,10 +14,18 @@ class TestSeq(unittest.TestCase):
 
         key1, key2 = jax.random.split(jax.random.PRNGKey(0), 2)
         forward = hk.transform(forward)
-        x = np.ones((100, 20))
+        x = np.random.randn(100, 20)
         params = forward.init(key1, x)
         s = forward.apply(params, key2, x)
         assert s.shape == x.shape
+
+        # make sure it has derivatives
+        # note key is used incorrectly here for simpl
+        def loss(x):
+            s = forward.apply(params, key2, x)
+            return jnp.sum(x**2)
+        g = jax.grad(loss)(x)
+        assert np.sum(g**2) > 0
 
 
 class TestMLP(unittest.TestCase):
