@@ -28,19 +28,32 @@ class EnsembleBlock(hk.Module):
         return out
 
 
-def adv_loss_func(forward, params, seqs, labels):
-    def deep_ensemble_loss(forward, params, seqs, labels):
-        out = forward.apply(params, seqs)
-        means = out[..., 0]
-        stds = out[..., 1]
-        n_log_likelihoods = 0.5 * \
-            jnp.log(jnp.abs(stds)) + 0.5*(labels-means)**2/jnp.abs(stds)
-        return jnp.sum(n_log_likelihoods, axis=0)
+def model_forward(x):
+    e = EnsembleBlock()
+    return e(x)
+
+
+def model_reduce(out):
+    mu = jnp.mean(out[..., 0], axis=0)
+    std = jnp.mean(out[..., 1] + out[..., 0]**2, axis=0) - mu**2
+    return mu, std
+
+
+def _deep_ensemble_loss(forward, params, seqs, labels):
+    out = forward.apply(params, seqs)
+    means = out[..., 0]
+    stds = out[..., 1]
+    n_log_likelihoods = 0.5 * \
+        jnp.log(jnp.abs(stds)) + 0.5*(labels-means)**2/jnp.abs(stds)
+    return jnp.sum(n_log_likelihoods, axis=0)
+
+
+def _adv_loss_func(forward, params, seqs, labels):
     epsilon = 1e-3
-    grad_inputs = jax.grad(deep_ensemble_loss, 2)(
+    grad_inputs = jax.grad(_deep_ensemble_loss, 2)(
         forward, params, seqs, labels)
     seqs_ = seqs + epsilon * jnp.sign(grad_inputs)
-    return deep_ensemble_loss(forward, params, seqs, labels) + deep_ensemble_loss(forward, params, seqs_, labels)
+    return _deep_ensemble_loss(forward, params, seqs, labels) + _deep_ensemble_loss(forward, params, seqs_, labels)
 
 
 def ensemble_train(key, forward, seqs, labels):
@@ -60,11 +73,11 @@ def ensemble_train(key, forward, seqs, labels):
     def train_step(opt_state, params, seq, label):
         seq_tile = jnp.tile(seq, (5, 1))
         label_tile = jnp.tile(label, 5)
-        grad = jax.grad(adv_loss_func, 1)(
+        grad = jax.grad(_adv_loss_func, 1)(
             forward, params, seq_tile, label_tile)
         updates, opt_state = opt_update(grad, opt_state, params)
         params = optax.apply_updates(params, updates)
-        loss = adv_loss_func(forward, params, seq_tile, label_tile)
+        loss = _adv_loss_func(forward, params, seq_tile, label_tile)
         return opt_state, params, loss
 
     for _ in range(n_step):
@@ -73,25 +86,13 @@ def ensemble_train(key, forward, seqs, labels):
             label = labels[i]
             opt_state, params, loss = train_step(opt_state, params, seq, label)
     outs = forward.apply(params, seqs)
-    #joint_outs = model_stack(outs)
+    #joint_outs = model_reduce(outs)
     return params, outs
-
-
-def predict_fn(x):
-    x = jnp.tile(x, (5, 1))
-    module = EnsembleBlock()
-    return module(x)
-
-
-def model_stack(out):
-    mu = jnp.mean(out[..., 0], axis=0)
-    std = jnp.mean(out[..., 1] + out[..., 0]**2, axis=0) - mu**2
-    return mu, std
 
 
 def bayesian_ei(f, params, init_x, Y):
     out = f.apply(params, init_x)
-    joint_out = model_stack(out)
+    joint_out = model_reduce(out)
     mu = joint_out[0]
     std = joint_out[1]
     #mus = f.apply(params, X)[...,0]
