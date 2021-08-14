@@ -1,21 +1,18 @@
 from functools import partial  # for use with vmap
 import jax
 import jax.numpy as jnp
-from jax.experimental import stax
 from jax.experimental import optimizers
-from jax.experimental.stax import (BatchNorm, Conv, Dense, Flatten,
-                                   Relu, LogSoftmax, Sigmoid)
-from jax_unirep.layers import AAEmbedding, mLSTM, mLSTMAvgHidden
-from jax_unirep.utils import load_params, load_embedding, seq_to_oh
 from jax_unirep.utils import *
-from jax_unirep import get_reps
-from utils import *
-from diff_unirep import *
+from .utils import *
+import haiku as hk
+
 
 ALPHABET_Unirep = ['-', 'M', 'R', 'H', 'K', 'D', 'E', 'S', 'T', 'N', 'Q', 'C', 'U',
                    'G', 'P', 'A', 'V', 'I', 'F', 'Y', 'W', 'L', 'O', 'X', 'Z', 'B', 'J', 'start', 'stop']
 ALPHABET = ['A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H',
             'I', 'L', 'K', 'M', 'F', 'P', 'S', 'T', 'W', 'Y', 'V']
+
+# https://arxiv.org/abs/2005.11275
 
 
 @jax.partial(jax.custom_jvp, nondiff_argnums=(0,))
@@ -46,6 +43,21 @@ def norm_layer(logits, r, b):
     norm_logits = (logits - miu) / (std**2 + epsilon)
     scaled_logits = norm_logits * r + b
     return scaled_logits
+
+
+class SeqpropBlock(hk.Module):
+    def __init__(self):
+        super().__init__(name='seqprop')
+
+    def __call__(self, logits):
+        N, C = logits.shape
+        r = hk.get_parameter("r", shape=[], dtype=logits.dtype, init=jnp.ones)
+        b = hk.get_parameter(
+            "b",  shape=[], dtype=logits.dtype, init=jnp.zeros)
+        norm_logits = norm_layer(logits, r, b)
+        key = hk.next_rng_key()
+        sampled_vec = disc_ss(key, norm_logits)
+        return sampled_vec
 
 
 def forward_seqprop(key, logits, r, b):

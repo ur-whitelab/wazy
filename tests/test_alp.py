@@ -6,8 +6,17 @@ import haiku as hk
 import jax
 
 
-class TestPrepareData(unittest.TestCase):
-    pass
+class TestSeq(unittest.TestCase):
+    def test_seqprop(self):
+        def forward(x):
+            return alpdesign.SeqpropBlock()(x)
+
+        key1, key2 = jax.random.split(jax.random.PRNGKey(0), 2)
+        forward = hk.transform(forward)
+        x = np.ones((100, 20))
+        params = forward.init(key1, x)
+        s = forward.apply(params, key2, x)
+        assert s.shape == x.shape
 
 
 class TestMLP(unittest.TestCase):
