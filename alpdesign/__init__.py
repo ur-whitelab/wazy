@@ -3,5 +3,4 @@
 '''
 
 from .version import __version__
-from .utils import *
-from .model import *
+from .mlp import EnsembleBlock, EnsembleBlockConfig, ensemble_train, bayes_opt

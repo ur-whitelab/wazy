@@ -1,51 +1,61 @@
-import tensorflow as tf
-from tensorflow import keras
 import unittest
 import alpdesign
 import numpy as np
-
+import jax_unirep
+import haiku as hk
+import jax
 
 
 class TestPrepareData(unittest.TestCase):
+    pass
 
-    def test_prepare_data(self):
-        r = alpdesign.prepare_data('../active_learning_data/antibacterial-sequence-vectors.npy',
-         ['../active_learning_data/antibacterial-fake-sequence-vectors.npy'])
-    
 
-class TestALPModel(unittest.TestCase):
+class TestMLP(unittest.TestCase):
 
-    def test_conv_layer(self):
-        inputs = keras.Input(shape=(100,28))
-        model = alpdesign.ALPModel(alpdesign.ALPHypers())
-        out = model.conv_layer(inputs)
-        assert out.shape[-1] == alpdesign.ALPHypers().FILTER_SIZE
-        assert out.shape[-2] == inputs.shape[-2]-alpdesign.ALPHypers().KERNEL_SIZE+1
+    def setUp(self) -> None:
+        seqs = ['MSAD',
+                'EKMHI',
+                'HSFHK',
+                'LDHAVL',
+                'PERHHY',
+                'DPSQTI',
+                'LIDLFS',
+                'SCDVGPHP',
+                'DWIEHV',
+                'RHWRAP',
+                ]
 
-    def test_pooling_layer(self):
-        inputs = keras.Input(shape=(100,28))
-        model = alpdesign.ALPModel(alpdesign.ALPHypers())
-        out = model.pooling_layer(inputs)
-        assert out.shape[-1] == inputs.shape[-1]
-        assert out.shape[-2] == 1
+        self.labels = np.array([25.217391304347824,
+                                15.652173913043478,
+                                23.478260869565219,
+                                22.173913043478262,
+                                23.913043478260871,
+                                24.782608695652176,
+                                26.956521739130434,
+                                17.391304347826086,
+                                19.130434782608695,
+                                26.521739130434781
+                                ])
+        self.reps = jax_unirep.get_reps(seqs)[0]
 
-    def test_tanh_layer(self):
-        inputs = keras.Input(shape=(100,28))
-        model = alpdesign.ALPModel(alpdesign.ALPHypers())
-        out = model.tanh_layer(inputs)
-        assert out.shape[-1] == alpdesign.ALPHypers().HIDDEN_LAYER_SIZE
-        assert out.shape[-2] == inputs.shape[-2]
+    def test_mlp(self):
+        def forward(x):
+            e = alpdesign.EnsembleBlock()
+            return e(x)
 
-    def test_hidden_layer(self):
-        inputs = keras.Input(shape=(100,28))
-        model = alpdesign.ALPModel(alpdesign.ALPHypers())
-        out = model.hidden_layer(inputs)
-        assert out.shape[-1] == alpdesign.ALPHypers().HIDDEN_LAYER_SIZE
-        assert out.shape[-2] == inputs.shape[-2]
+        key = jax.random.PRNGKey(0)
+        forward = hk.without_apply_rng(hk.transform(forward))
+        params = forward.init(key, self.reps)
+        forward.apply(params, self.reps)
 
-    def test_softmax_layer(self):
-        inputs = keras.Input(shape=(100,28))
-        model = alpdesign.ALPModel(alpdesign.ALPHypers())
-        out = model.softmax_layer(inputs)
-        assert out.shape[-1] == 1
-        assert out.shape[-2] == inputs.shape[-2]
+    def test_train(self):
+        def forward(x):
+            e = alpdesign.EnsembleBlock()
+            return e(x)
+        key = jax.random.PRNGKey(0)
+        forward = hk.without_apply_rng(hk.transform(forward))
+        params, outs = alpdesign.ensemble_train(
+            key, forward, self.reps, self.labels)
+        # init_x = jax.random.normal(key, shape=(1, 1900))
+        # final_vec = alpdesign.bayes_opt(forward, params, init_x, self.labels)
+        # assert final_vec.shape == init_x.shape
