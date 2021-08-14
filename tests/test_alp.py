@@ -56,6 +56,15 @@ class TestMLP(unittest.TestCase):
         forward = hk.without_apply_rng(hk.transform(forward))
         params, outs = alpdesign.ensemble_train(
             key, forward, self.reps, self.labels)
-        # init_x = jax.random.normal(key, shape=(1, 1900))
-        # final_vec = alpdesign.bayes_opt(forward, params, init_x, self.labels)
-        # assert final_vec.shape == init_x.shape
+
+    def test_bayes_opt(self):
+        def forward(x):
+            e = alpdesign.EnsembleBlock()
+            return e(x)
+        key = jax.random.PRNGKey(0)
+        forward = hk.without_apply_rng(hk.transform(forward))
+        params, outs = alpdesign.ensemble_train(
+            key, forward, self.reps, self.labels)
+        init_x = jax.random.normal(key, shape=(1, 1900))
+        final_vec = alpdesign.bayes_opt(forward, params, init_x, self.labels)
+        assert final_vec.shape == init_x.shape
