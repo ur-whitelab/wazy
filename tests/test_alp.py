@@ -28,6 +28,19 @@ class TestSeq(unittest.TestCase):
         assert np.sum(g**2) > 0
 
 
+class TestUtils(unittest.TestCase):
+    def test_encoding(self):
+        s = 'RRNDREW'
+        es = alpdesign.encode_seq(s)
+        assert ''.join(alpdesign.decode_seq(es)) == s
+
+    def test_2uni(self):
+        s = 'RRNNFRDDSAADREW'
+        es = alpdesign.encode_seq(s)
+        us = alpdesign.seq2useq(es)
+        assert s == ''.join(alpdesign.decode_useq(us))
+
+
 class TestMLP(unittest.TestCase):
 
     def setUp(self) -> None:
