@@ -69,7 +69,7 @@ def forward_seqprop(key, logits, r, b):
 
 
 def loss_func(target_rep, sampled_vec):
-    sampled_vec_unirep = index_trans(sampled_vec, ALPHABET, ALPHABET_Unirep)
+    sampled_vec_unirep = seq2useq(sampled_vec, ALPHABET, ALPHABET_Unirep)
     h_avg = differentiable_jax_unirep(sampled_vec_unirep)
     loss = jnp.mean(((target_rep - h_avg)/target_rep)**2)
     return loss
@@ -116,7 +116,7 @@ def beam_search(sampled_vec, final_logits, logits_trace, loss_trace, beam_num=5)
     beam_logits = []
     jax_loss_trace = jnp.array(loss_trace)
     for idx in indices:
-        beam_seqs.append(vec_to_seq(sampled_vec[idx]))
+        beam_seqs.append(decode_seq(sampled_vec[idx]))
         beam_loss_trace.append(jax_loss_trace[:, idx])
         beam_logits.append(final_logits[idx])
     beam_loss_trace = jnp.array(beam_loss_trace)
@@ -124,12 +124,13 @@ def beam_search(sampled_vec, final_logits, logits_trace, loss_trace, beam_num=5)
     return beam_loss, beam_loss_trace, beam_logits, beam_seqs
 
 
-def beam_train(key, target_rep, logits, r, b, batch_size=16, bag_num=6):
+def beam_train(key, target_rep, logits, r, b, train_func, batch_size=16, bag_num=6):
+    b_train_func = jax.vmap(train_func, (0,None,0,None,None), (0, 0, 0, 0))
     beam_size = int(batch_size / 2)
     beam_loss_traces = []
     for bag_idx in range(bag_num):
         batch_keys = jax.random.split(key, num=batch_size)
-        sampled_vec, final_logits, logits_trace, loss_trace = b_train_seqprop(
+        sampled_vec, final_logits, logits_trace, loss_trace = b_train_func(
             batch_keys, target_rep, logits, r, b)
         beam_loss, beam_loss_trace, beam_logits, beam_seqs = beam_search(
             sampled_vec, final_logits, logits_trace, loss_trace, beam_num=beam_size)
