@@ -49,7 +49,6 @@ class SeqpropBlock(hk.Module):
         super().__init__(name='seqprop')
 
     def __call__(self, logits):
-        N, C = logits.shape
         r = hk.get_parameter("r", shape=[], dtype=logits.dtype, init=jnp.ones)
         b = hk.get_parameter(
             "b",  shape=[], dtype=logits.dtype, init=jnp.zeros)
@@ -58,7 +57,12 @@ class SeqpropBlock(hk.Module):
         sampled_vec = disc_ss(key, norm_logits)
         return sampled_vec
 
+def forward_seqprop(logits):
+    s = SeqpropBlock()
+    return s(logits)
 
+forward_seqprop = hk.transform(forward_seqprop)
+'''
 def forward_seqprop(key, logits, r, b):
     # normalization layer
     norm_logits = norm_layer(logits, r, b)  # same dimension as logits
@@ -66,45 +70,47 @@ def forward_seqprop(key, logits, r, b):
     sampled_vec = disc_ss(key, norm_logits)
     #sampled_vec_unirep = index_trans(sampled_vec, ALPHABET, ALPHABET_Unirep)
     return sampled_vec, norm_logits
+'''
+
 
 
 def loss_func(target_rep, sampled_vec):
-    sampled_vec_unirep = seq2useq(sampled_vec, ALPHABET, ALPHABET_Unirep)
+    sampled_vec_unirep = seq2useq(sampled_vec)
     h_avg = differentiable_jax_unirep(sampled_vec_unirep)
     loss = jnp.mean(((target_rep - h_avg)/target_rep)**2)
     return loss
 
 
-def packed_loss_func(key, logits, r, b, target_rep):
-    sampled_vec, _ = forward_seqprop(key, logits, r, b)
+def packed_loss_func(key, logits, params, target_rep):
+    sampled_vec = forward_seqprop.apply(params, key, logits)
     return loss_func(target_rep, sampled_vec)
 
 
-def train_seqprop_adam(key, target_rep, init_logits, init_r, init_b, iter_num=2000):
+def train_seqprop_adam(key, target_rep, init_logits, init_params, iter_num=200):
     opt_init, opt_update, get_params = optimizers.adam(step_size=1e-1)
     #opt_init, opt_update, get_params = optimizers.adagrad(step_size=1e-1)
-    opt_state = opt_init((init_logits, init_r, init_b))  # initial state
+    opt_state = opt_init((init_logits, init_params))  # initial state
     logits_trace = []
 
     @jax.jit
     def step(key, i, opt_state):
         key, subkey = jax.random.split(key, num=2)
-        p = get_params(opt_state)
-        logits, r, b = p
-        sampled_vec, norm_logits = forward_seqprop(key, logits, r, b)
+        p = get_params(opt_state) # logits, r, b
+        logits, params = p
+        sampled_vec = forward_seqprop.apply(params, key, logits)
         loss = loss_func(target_rep, sampled_vec)
-        g = jax.grad(packed_loss_func, (1, 2, 3))(
-            key, logits, r, b, target_rep)
+        g = jax.grad(packed_loss_func, (1, 2))(
+            key, logits, params, target_rep)
         return opt_update(i, g, opt_state), loss
 
     for step_idx in range(iter_num):
         print(step_idx)
         opt_state, loss = step(key, step_idx, opt_state)
         print(loss)
-        mid_logits, mid_r, mid_b = get_params(opt_state)
+        mid_logits, mid_params = get_params(opt_state)
         logits_trace.append(mid_logits)
-    final_logits, final_r, final_b = get_params(opt_state)
-    sampled_vec, _ = forward_seqprop(key, final_logits, final_r, final_b)
+    final_logits, final_params = get_params(opt_state)
+    sampled_vec= forward_seqprop.apply(final_params, key, final_logits)
     return sampled_vec, final_logits, logits_trace
 
 
@@ -124,14 +130,14 @@ def beam_search(sampled_vec, final_logits, logits_trace, loss_trace, beam_num=5)
     return beam_loss, beam_loss_trace, beam_logits, beam_seqs
 
 
-def beam_train(key, target_rep, logits, r, b, train_func, batch_size=16, bag_num=6):
-    b_train_func = jax.vmap(train_func, (0,None,0,None,None), (0, 0, 0, 0))
+def beam_train(key, target_rep, logits, params, train_func, batch_size=16, bag_num=6):
+    b_train_func = jax.vmap(train_func, (0,None,0,None), (0, 0, 0, 0))
     beam_size = int(batch_size / 2)
     beam_loss_traces = []
     for bag_idx in range(bag_num):
         batch_keys = jax.random.split(key, num=batch_size)
         sampled_vec, final_logits, logits_trace, loss_trace = b_train_func(
-            batch_keys, target_rep, logits, r, b)
+            batch_keys, target_rep, logits, params)
         beam_loss, beam_loss_trace, beam_logits, beam_seqs = beam_search(
             sampled_vec, final_logits, logits_trace, loss_trace, beam_num=beam_size)
         beam_loss_traces.append(beam_loss_trace)

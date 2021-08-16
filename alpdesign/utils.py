@@ -3,6 +3,7 @@ import random
 import jax
 import jax.numpy as jnp
 import jax_unirep.utils as unirep
+import jax_unirep.layers as unirep_layer
 from functools import partial
 
 ALPHABET_Unirep = ['-', 'M', 'R', 'H', 'K', 'D', 'E', 'S', 'T', 'N', 'Q', 'C',
@@ -39,7 +40,7 @@ def seq2useq(e):
 def differentiable_jax_unirep(ohc_seq):
     emb_params = unirep.load_embedding()
     seq_embedding = jnp.stack([jnp.matmul(ohc_seq, emb_params)], axis=0)
-    _, mLSTM_apply_fun = unirep.mLSTM(1900)
+    _, mLSTM_apply_fun = unirep_layer.mLSTM(1900)
     weight_params = unirep.load_params()[1]
     h_final, _, outputs = jax.vmap(
         partial(mLSTM_apply_fun, weight_params))(seq_embedding)
