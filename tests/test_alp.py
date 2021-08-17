@@ -27,6 +27,25 @@ class TestSeq(unittest.TestCase):
         g = jax.grad(loss)(x)
         assert np.sum(g**2) > 0
 
+    def test_lossfunc(self):
+        seq = ['A','A','A','A']
+        target = 'AAAA'
+        vec = alpdesign.utils.encode_seq(seq)
+        target_rep = jax_unirep.get_reps(target)[0]
+        assert alpdesign.seq.loss_func(target_rep, vec) == 0.
+
+    def test_train(self):
+        seq = ['A','A','A','A']
+        target = 'SSSS'
+        vec = alpdesign.utils.encode_seq(seq)
+        key = jax.random.PRNGKey(37)
+        key, logits_key = jax.random.split(key, num=2)
+        batch_size = 2
+        init_logits = jax.random.normal(logits_key, shape=(batch_size,*jnp.shape(vec)))
+        init_params = alpdesign.seq.forward_seqprop.init(key, init_logits)
+        target_rep = jax_unirep.get_reps(target)[0]
+        sampled_vec, final_logits, logits_trace, loss_trace = alpdesign.seq.train_seqprop(key, target_rep, init_logits, init_params, iter_num=20)
+
 
 class TestUtils(unittest.TestCase):
     def test_encoding(self):

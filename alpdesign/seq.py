@@ -62,20 +62,10 @@ def forward_seqprop(logits):
     return s(logits)
 
 forward_seqprop = hk.transform(forward_seqprop)
-'''
-def forward_seqprop(key, logits, r, b):
-    # normalization layer
-    norm_logits = norm_layer(logits, r, b)  # same dimension as logits
-    # sampling layer
-    sampled_vec = disc_ss(key, norm_logits)
-    #sampled_vec_unirep = index_trans(sampled_vec, ALPHABET, ALPHABET_Unirep)
-    return sampled_vec, norm_logits
-'''
-
 
 
 def loss_func(target_rep, sampled_vec):
-    sampled_vec_unirep = seq2useq(sampled_vec)
+    sampled_vec_unirep = seq2useq(sampled_vec) 
     h_avg = differentiable_jax_unirep(sampled_vec_unirep)
     loss = jnp.mean(((target_rep - h_avg)/target_rep)**2)
     return loss
@@ -115,36 +105,36 @@ def train_seqprop_adam(key, target_rep, init_logits, init_params, iter_num=20):
     return sampled_vec, final_logits, logits_trace, loss_trace
 
 
-def beam_search(sampled_vec, final_logits, logits_trace, loss_trace, beam_num=5):
-    indices = jnp.argsort(loss_trace[-1])[:beam_num]
-    beam_loss = jnp.take(loss_trace[-1], indices)
-    beam_loss_trace = []
-    beam_seqs = []
-    beam_logits = []
+def pso_search(sampled_vec, final_logits, loss_trace, swarm_num=5): # particle swarm optimization
+    indices = jnp.argsort(loss_trace[-1])[:swarm_num]
+    pso_loss = jnp.take(loss_trace[-1], indices)
+    pso_loss_trace = []
+    pso_seqs = []
+    pso_logits = []
     jax_loss_trace = jnp.array(loss_trace)
     for idx in indices:
-        beam_seqs.append(decode_seq(sampled_vec[idx]))
-        beam_loss_trace.append(jax_loss_trace[:, idx])
-        beam_logits.append(final_logits[idx])
-    beam_loss_trace = jnp.array(beam_loss_trace)
-    beam_logits = jnp.array(beam_logits)
-    return beam_loss, beam_loss_trace, beam_logits, beam_seqs
+        pso_seqs.append(decode_seq(sampled_vec[idx]))
+        pso_loss_trace.append(jax_loss_trace[:, idx])
+        pso_logits.append(final_logits[idx])
+    pso_loss_trace = jnp.array(pso_loss_trace)
+    pso_logits = jnp.array(pso_logits)
+    return pso_loss, pso_loss_trace, pso_logits, pso_seqs
 
 
-def beam_train(key, target_rep, logits, params, train_func, batch_size=16, bag_num=6):
+def pso_train(key, target_rep, logits, params, train_func, batch_size=16, bag_num=6):
     b_train_func = jax.vmap(train_func, (0,None,0,None), (0, 0, 0, 0))
-    beam_size = int(batch_size / 2)
-    beam_loss_traces = []
+    pso_size = int(batch_size / 2)
+    pso_loss_traces = []
     for bag_idx in range(bag_num):
         batch_keys = jax.random.split(key, num=batch_size)
         sampled_vec, final_logits, logits_trace, loss_trace = b_train_func(
             batch_keys, target_rep, logits, params)
-        beam_loss, beam_loss_trace, beam_logits, beam_seqs = beam_search(
-            sampled_vec, final_logits, logits_trace, loss_trace, beam_num=beam_size)
-        beam_loss_traces.append(beam_loss_trace)
+        pso_loss, pso_loss_trace, pso_logits, pso_seqs = pso_search(
+            sampled_vec, final_logits, loss_trace, swarm_num=pso_size)
+        pso_loss_traces.append(pso_loss_trace)
         # rebuild the batches for next bag
         # add gaussian noise
-        pertubed_logits = jnp.add(beam_logits, jnp.mean(
-            beam_logits)*jax.random.normal(key, shape=jnp.shape(beam_logits)))
-        logits = jnp.concatenate((beam_logits, pertubed_logits))
-    return beam_loss_traces, beam_loss, beam_seqs
+        pertubed_logits = jnp.add(pso_logits, jnp.mean(
+            pso_logits)*jax.random.normal(key, shape=jnp.shape(pso_logits)))
+        logits = jnp.concatenate((pso_logits, pertubed_logits))
+    return pso_loss_traces, pso_loss, pso_seqs

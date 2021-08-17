@@ -27,7 +27,7 @@ def decode_seq(s):
     return [ALPHABET[int(i)] for i in indices]
 
 
-def encode_seq(s):
+def encode_seq(s): # s is a list
     e = np.zeros((len(s), len(ALPHABET)))
     e[np.arange(len(s)), [ALPHABET.index(si) for si in s]] = 1
     return e
