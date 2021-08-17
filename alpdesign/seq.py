@@ -86,11 +86,12 @@ def packed_loss_func(key, logits, params, target_rep):
     return loss_func(target_rep, sampled_vec)
 
 
-def train_seqprop_adam(key, target_rep, init_logits, init_params, iter_num=200):
+def train_seqprop_adam(key, target_rep, init_logits, init_params, iter_num=20):
     opt_init, opt_update, get_params = optimizers.adam(step_size=1e-1)
     #opt_init, opt_update, get_params = optimizers.adagrad(step_size=1e-1)
     opt_state = opt_init((init_logits, init_params))  # initial state
     logits_trace = []
+    loss_trace = []
 
     @jax.jit
     def step(key, i, opt_state):
@@ -106,12 +107,12 @@ def train_seqprop_adam(key, target_rep, init_logits, init_params, iter_num=200):
     for step_idx in range(iter_num):
         print(step_idx)
         opt_state, loss = step(key, step_idx, opt_state)
-        print(loss)
+        loss_trace.append(loss)
         mid_logits, mid_params = get_params(opt_state)
         logits_trace.append(mid_logits)
     final_logits, final_params = get_params(opt_state)
     sampled_vec= forward_seqprop.apply(final_params, key, final_logits)
-    return sampled_vec, final_logits, logits_trace
+    return sampled_vec, final_logits, logits_trace, loss_trace
 
 
 def beam_search(sampled_vec, final_logits, logits_trace, loss_trace, beam_num=5):
