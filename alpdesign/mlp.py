@@ -79,15 +79,18 @@ def ensemble_train(key, forward, seqs, labels):
         params = optax.apply_updates(params, updates)
         loss = _adv_loss_func(forward, params, seq_tile, label_tile)
         return opt_state, params, loss
-
+    losses = []
     for _ in range(n_step):
+        batch_loss = 0.
         for i in range(len(seqs)):
             seq = seqs[i]
             label = labels[i]
             opt_state, params, loss = train_step(opt_state, params, seq, label)
-    outs = forward.apply(params, seqs)
+            batch_loss += loss
+        losses.append(batch_loss/len(seqs))
+    #outs = forward.apply(params, seqs)
     #joint_outs = model_reduce(outs)
-    return params, outs
+    return params, losses
 
 
 def bayesian_ei(f, params, init_x, Y):
@@ -119,5 +122,5 @@ def bayes_opt(f, params, init_x, labels):
     for step_idx in range(n_steps):
         opt_state, loss = step(step_idx, opt_state)
 
-    final_vec = get_params(opt_state)
+    final_vec = get_params(opt_state)[0]
     return final_vec

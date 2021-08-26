@@ -76,7 +76,7 @@ def packed_loss_func(key, logits, params, target_rep):
     return loss_func(target_rep, sampled_vec)
 
 
-def train_seqprop(key, target_rep, init_logits, init_params, iter_num=20):
+def train_seqprop(key, target_rep, init_logits, init_params, iter_num=50):
     opt_init, opt_update, get_params = optimizers.adam(step_size=1e-1)
     #opt_init, opt_update, get_params = optimizers.adagrad(step_size=1e-1)
     opt_state = opt_init((init_logits, init_params))  # initial state

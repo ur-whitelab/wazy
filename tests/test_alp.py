@@ -100,13 +100,13 @@ class TestMLP(unittest.TestCase):
     def test_train(self):
         key = jax.random.PRNGKey(0)
         forward = hk.without_apply_rng(hk.transform(alpdesign.model_forward))
-        params, outs = alpdesign.ensemble_train(
+        params, losses = alpdesign.ensemble_train(
             key, forward, self.reps, self.labels)
 
     def test_bayes_opt(self):
         key = jax.random.PRNGKey(0)
         forward = hk.without_apply_rng(hk.transform(alpdesign.model_forward))
-        params, outs = alpdesign.ensemble_train(
+        params, losses = alpdesign.ensemble_train(
             key, forward, self.reps, self.labels)
         init_x = jax.random.normal(key, shape=(1, 1900))
         final_vec = alpdesign.bayes_opt(forward, params, init_x, self.labels)
