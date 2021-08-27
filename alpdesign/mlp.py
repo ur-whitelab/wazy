@@ -55,6 +55,10 @@ def _adv_loss_func(forward, params, seqs, labels):
     seqs_ = seqs + epsilon * jnp.sign(grad_inputs)
     return _deep_ensemble_loss(forward, params, seqs, labels) + _deep_ensemble_loss(forward, params, seqs_, labels)
 
+def shuffle_in_unison(key, a, b):
+    assert len(a) == len(b)
+    p = jnp.random.permutation(key, len(a))
+    return a[p], b[p]
 
 def ensemble_train(key, forward, seqs, labels):
     learning_rate = 1e-2
@@ -81,13 +85,16 @@ def ensemble_train(key, forward, seqs, labels):
         return opt_state, params, loss
     losses = []
     for _ in range(n_step):
-        batch_loss = 0.
-        for i in range(len(seqs)):
-            seq = seqs[i]
-            label = labels[i]
+        batch_loss = 0. # average loss over each training step
+        # shuffle seqs and labels
+        key, key_ = jax.random.split(key, num=2)
+        shuffle_seqs, shuffle_labels = shuffle_in_unison(key, seqs, labels)
+        for i in range(len(shuffle_labels)):
+            seq = shuffle_seqs[i]
+            label = shuffle_labels[i]
             opt_state, params, loss = train_step(opt_state, params, seq, label)
             batch_loss += loss
-        losses.append(batch_loss/len(seqs))
+        losses.append(batch_loss/len(shuffle_labels))
     #outs = forward.apply(params, seqs)
     #joint_outs = model_reduce(outs)
     return params, losses
@@ -105,9 +112,12 @@ def bayesian_ei(f, params, init_x, Y):
     return (mu-best-epsilon)*norm.cdf(z) + std*norm.pdf(z)
 
 
-def bayes_opt(f, params, init_x, labels):
+def bayes_opt(f, params, labels):
+    key = jax.random.PRNGKey(0)
+    key, _ = jax.random.split(key, num=2)
     eta = 1e-2
-    n_steps = 10
+    n_steps = 50
+    init_x = jax.random.normal(key, shape=(1, 1900))
     opt_init, opt_update, get_params = optimizers.adam(
         step_size=eta, b1=0.8, b2=0.9, eps=1e-5)
     opt_state = opt_init(init_x)
