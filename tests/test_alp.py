@@ -40,11 +40,12 @@ class TestSeq(unittest.TestCase):
         vec = alpdesign.utils.encode_seq(seq)
         key = jax.random.PRNGKey(37)
         key, logits_key = jax.random.split(key, num=2)
-        batch_size = 2
-        init_logits = jax.random.normal(logits_key, shape=(batch_size,*jnp.shape(vec)))
+        #batch_size = 2
+        init_logits = jax.random.normal(logits_key, shape=jnp.shape(vec))
+        #init_logits = jax.random.normal(logits_key, shape=(batch_size,*jnp.shape(vec)))
         init_params = alpdesign.seq.forward_seqprop.init(key, init_logits)
         target_rep = jax_unirep.get_reps(target)[0]
-        sampled_vec, final_logits, logits_trace, loss_trace = alpdesign.seq.train_seqprop(key, target_rep, init_logits, init_params, iter_num=20)
+        sampled_vec, final_logits, logits_trace, loss_trace = alpdesign.seq.train_seqprop(key, target_rep, init_logits, init_params)
 
 
 class TestUtils(unittest.TestCase):
@@ -108,6 +109,5 @@ class TestMLP(unittest.TestCase):
         forward = hk.without_apply_rng(hk.transform(alpdesign.model_forward))
         params, losses = alpdesign.ensemble_train(
             key, forward, self.reps, self.labels)
-        init_x = jax.random.normal(key, shape=(1, 1900))
-        final_vec = alpdesign.bayes_opt(forward, params, init_x, self.labels)
-        assert final_vec.shape == init_x.shape
+        final_vec = alpdesign.bayes_opt(forward, params, self.labels)
+        assert final_vec.shape == (1900,)

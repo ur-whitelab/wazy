@@ -55,10 +55,11 @@ def _adv_loss_func(forward, params, seqs, labels):
     seqs_ = seqs + epsilon * jnp.sign(grad_inputs)
     return _deep_ensemble_loss(forward, params, seqs, labels) + _deep_ensemble_loss(forward, params, seqs_, labels)
 
+
 def shuffle_in_unison(key, a, b):
     assert len(a) == len(b)
-    p = jnp.random.permutation(key, len(a))
-    return a[p], b[p]
+    p = jax.random.permutation(key, len(a))
+    return jnp.array([a[i] for i in p]), jnp.array([b[i] for i in p])
 
 def ensemble_train(key, forward, seqs, labels):
     learning_rate = 1e-2
