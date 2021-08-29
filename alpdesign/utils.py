@@ -24,7 +24,7 @@ def decode_useq(s):
 
 def decode_seq(s):
     indices = jnp.argmax(s, axis=1)
-    return [ALPHABET[int(i)] for i in indices]
+    return [ALPHABET[i] for i in indices]
 
 
 def encode_seq(s): # s is a list

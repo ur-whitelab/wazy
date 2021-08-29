@@ -76,7 +76,7 @@ def packed_loss_func(key, logits, params, target_rep):
     return loss_func(target_rep, sampled_vec)
 
 
-def train_seqprop(key, target_rep, init_logits, init_params, iter_num=50):
+def train_seqprop(key, target_rep, init_logits, init_params, iter_num=100):
     opt_init, opt_update, get_params = optimizers.adam(step_size=1e-1)
     #opt_init, opt_update, get_params = optimizers.adagrad(step_size=1e-1)
     opt_state = opt_init((init_logits, init_params))  # initial state
@@ -105,7 +105,7 @@ def train_seqprop(key, target_rep, init_logits, init_params, iter_num=50):
     return sampled_vec, final_logits, logits_trace, loss_trace
 
 
-def pso_search(sampled_vec, final_logits, loss_trace, swarm_num=5): # particle swarm optimization
+def pso_search(sampled_vec, final_logits, loss_trace, swarm_num): # particle swarm optimization
     indices = jnp.argsort(loss_trace[-1])[:swarm_num]
     pso_loss = jnp.take(loss_trace[-1], indices)
     pso_loss_trace = []
@@ -113,17 +113,20 @@ def pso_search(sampled_vec, final_logits, loss_trace, swarm_num=5): # particle s
     pso_logits = []
     jax_loss_trace = jnp.array(loss_trace)
     for idx in indices:
-        pso_seqs.append(decode_seq(sampled_vec[idx]))
+        # change here, put decode_seq() outside 
+        pso_seqs.append(sampled_vec[idx])
         pso_loss_trace.append(jax_loss_trace[:, idx])
         pso_logits.append(final_logits[idx])
     pso_loss_trace = jnp.array(pso_loss_trace)
     pso_logits = jnp.array(pso_logits)
     return pso_loss, pso_loss_trace, pso_logits, pso_seqs
 
+b_train_func = jax.vmap(train_seqprop, (0,None,0,None), (0, 0, 0, 0))
 
-def pso_train(key, target_rep, logits, params, train_func, batch_size=16, bag_num=6):
-    b_train_func = jax.vmap(train_func, (0,None,0,None), (0, 0, 0, 0))
-    pso_size = int(batch_size / 2)
+@jax.partial(jax.jit, static_argnums=(4,5))
+def pso_train(key, target_rep, logits, params, batch_size=16, bag_num=6):
+    #b_train_func = jax.vmap(train_func, (0,None,0,None), (0, 0, 0, 0))
+    pso_size = jnp.array(batch_size / 2, int)
     pso_loss_traces = []
     for bag_idx in range(bag_num):
         batch_keys = jax.random.split(key, num=batch_size)
@@ -137,4 +140,10 @@ def pso_train(key, target_rep, logits, params, train_func, batch_size=16, bag_nu
         pertubed_logits = jnp.add(pso_logits, jnp.mean(
             pso_logits)*jax.random.normal(key, shape=jnp.shape(pso_logits)))
         logits = jnp.concatenate((pso_logits, pertubed_logits))
-    return pso_loss_traces, pso_loss, pso_seqs
+        key = batch_keys[0] # update key in each iteration
+
+    traces = pso_loss_traces[0]
+    for i in range(1,bag_num):
+        traces = jnp.concatenate((traces, pso_loss_traces[i]), axis=1)
+    loss_trace = jnp.array(traces)
+    return loss_trace, pso_loss, pso_seqs  # pso_seqs is one-hot
