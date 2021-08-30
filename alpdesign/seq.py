@@ -67,7 +67,8 @@ forward_seqprop = hk.transform(forward_seqprop)
 def loss_func(target_rep, sampled_vec):
     sampled_vec_unirep = seq2useq(sampled_vec) 
     h_avg = differentiable_jax_unirep(sampled_vec_unirep)
-    loss = jnp.mean(((target_rep - h_avg)/target_rep)**2)
+    #loss = jnp.mean(((target_rep - h_avg)/target_rep)**2) # mean squared error
+    loss = 1-jnp.sum(jnp.vdot(h_avg, target_rep))/jnp.sqrt(jnp.sum(h_avg**2)*jnp.sum(target_rep**2)) # cosine similarity
     return loss
 
 
@@ -123,7 +124,7 @@ def pso_search(sampled_vec, final_logits, loss_trace, swarm_num): # particle swa
 
 b_train_func = jax.vmap(train_seqprop, (0,None,0,None), (0, 0, 0, 0))
 
-@jax.partial(jax.jit, static_argnums=(4,5))
+#@jax.partial(jax.jit, static_argnums=(4,5))
 def pso_train(key, target_rep, logits, params, batch_size=16, bag_num=6):
     #b_train_func = jax.vmap(train_func, (0,None,0,None), (0, 0, 0, 0))
     pso_size = jnp.array(batch_size / 2, int)
