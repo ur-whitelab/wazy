@@ -67,7 +67,8 @@ forward_seqprop = hk.transform(forward_seqprop)
 def loss_func(target_rep, sampled_vec):
     sampled_vec_unirep = seq2useq(sampled_vec) 
     h_avg = differentiable_jax_unirep(sampled_vec_unirep)
-    loss = jnp.mean(((target_rep - h_avg)/target_rep)**2)
+    #loss = jnp.mean(((target_rep - h_avg)/target_rep)**2) #rmse
+    loss = 1 - jnp.sum(jnp.vdot(h_avg, target_rep)) / jnp.sqrt(jnp.sum(h_avg**2)*jnp.sum(target_rep**2))
     return loss
 
 
@@ -75,7 +76,7 @@ def packed_loss_func(key, logits, params, target_rep):
     sampled_vec = forward_seqprop.apply(params, key, logits)
     return loss_func(target_rep, sampled_vec)
 
-
+#@jax.partial(jax.jit, static_argnums=4)
 def train_seqprop(key, target_rep, init_logits, init_params, iter_num=100):
     opt_init, opt_update, get_params = optimizers.adam(step_size=1e-1)
     #opt_init, opt_update, get_params = optimizers.adagrad(step_size=1e-1)
@@ -123,8 +124,8 @@ def pso_search(sampled_vec, final_logits, loss_trace, swarm_num): # particle swa
 
 b_train_func = jax.vmap(train_seqprop, (0,None,0,None), (0, 0, 0, 0))
 
-@jax.partial(jax.jit, static_argnums=(4,5))
-def pso_train(key, target_rep, logits, params, batch_size=16, bag_num=6):
+#@jax.partial(jax.jit, static_argnums=(4,5))
+def pso_train(key, target_rep, logits, params, batch_size, bag_num):
     #b_train_func = jax.vmap(train_func, (0,None,0,None), (0, 0, 0, 0))
     pso_size = jnp.array(batch_size / 2, int)
     pso_loss_traces = []
@@ -137,7 +138,7 @@ def pso_train(key, target_rep, logits, params, batch_size=16, bag_num=6):
         pso_loss_traces.append(pso_loss_trace)
         # rebuild the batches for next bag
         # add gaussian noise
-        pertubed_logits = jnp.add(pso_logits, jnp.mean(
+        pertubed_logits = jnp.add(pso_logits, 0.3*jnp.mean(
             pso_logits)*jax.random.normal(key, shape=jnp.shape(pso_logits)))
         logits = jnp.concatenate((pso_logits, pertubed_logits))
         key = batch_keys[0] # update key in each iteration

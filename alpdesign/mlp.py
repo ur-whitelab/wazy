@@ -63,10 +63,10 @@ def shuffle_in_unison(key, a, b):
 
 def ensemble_train(key, forward, seqs, labels):
     learning_rate = 1e-2
-    n_step = 100
+    n_step = 1000
 
     opt_init, opt_update = optax.chain(
-        optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-4),
+        optax.scale_by_adam(b1=0.8, b2=0.9, eps=1e-4),
         optax.scale(-learning_rate)  # minus sign -- minimizing the loss
     )
 
@@ -133,5 +133,5 @@ def bayes_opt(f, params, labels):
     for step_idx in range(n_steps):
         opt_state, loss = step(step_idx, opt_state)
 
-    final_vec = get_params(opt_state)[0]
+    final_vec = get_params(opt_state)
     return final_vec
