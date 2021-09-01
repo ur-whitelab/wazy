@@ -110,7 +110,7 @@ def bayesian_ei(f, params, init_x, Y):
     best = jnp.max(Y)
     epsilon = 0.1
     z = (mu-best-epsilon)/std
-    return (mu-best-epsilon)*norm.cdf(z) + std*norm.pdf(z)
+    return -(mu-best-epsilon)*norm.cdf(z) - std*norm.pdf(z)
 
 
 def bayes_opt(f, params, labels):
