@@ -49,7 +49,7 @@ def _deep_ensemble_loss(forward, params, seqs, labels):
 
 
 def _adv_loss_func(forward, params, seqs, labels):
-    epsilon = 1e-3
+    epsilon = 1e-5
     grad_inputs = jax.grad(_deep_ensemble_loss, 2)(
         forward, params, seqs, labels)
     seqs_ = seqs + epsilon * jnp.sign(grad_inputs)
@@ -63,7 +63,7 @@ def shuffle_in_unison(key, a, b):
 
 def ensemble_train(key, forward, seqs, labels):
     learning_rate = 1e-2
-    n_step = 1000
+    n_step = 3
 
     opt_init, opt_update = optax.chain(
         optax.scale_by_adam(b1=0.8, b2=0.9, eps=1e-4),
@@ -85,7 +85,8 @@ def ensemble_train(key, forward, seqs, labels):
         loss = _adv_loss_func(forward, params, seq_tile, label_tile)
         return opt_state, params, loss
     losses = []
-    for _ in range(n_step):
+    for i in range(n_step):
+        print(i)
         batch_loss = 0. # average loss over each training step
         # shuffle seqs and labels
         key, key_ = jax.random.split(key, num=2)
@@ -94,8 +95,9 @@ def ensemble_train(key, forward, seqs, labels):
             seq = shuffle_seqs[i]
             label = shuffle_labels[i]
             opt_state, params, loss = train_step(opt_state, params, seq, label)
-            batch_loss += loss
-        losses.append(batch_loss/len(shuffle_labels))
+            #batch_loss += loss
+            losses.append(loss)
+        #losses.append(batch_loss/len(shuffle_labels))
     #outs = forward.apply(params, seqs)
     #joint_outs = model_reduce(outs)
     return params, losses
