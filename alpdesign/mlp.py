@@ -61,7 +61,7 @@ def shuffle_in_unison(key, a, b):
     p = jax.random.permutation(key, len(a))
     return jnp.array([a[i] for i in p]), jnp.array([b[i] for i in p])
 
-def ensemble_train(key, forward, seqs, labels):
+def ensemble_train(key, forward, seqs, labels, val_seqs, val_labels):
     learning_rate = 1e-2
     n_step = 3
 
@@ -85,6 +85,7 @@ def ensemble_train(key, forward, seqs, labels):
         loss = _adv_loss_func(forward, params, seq_tile, label_tile)
         return opt_state, params, loss
     losses = []
+    val_losses = []
     for i in range(n_step):
         print(i)
         batch_loss = 0. # average loss over each training step
@@ -95,12 +96,22 @@ def ensemble_train(key, forward, seqs, labels):
             seq = shuffle_seqs[i]
             label = shuffle_labels[i]
             opt_state, params, loss = train_step(opt_state, params, seq, label)
+            #compute validation loss
+            val_loss = 0.
+            for j in range(len(val_labels)):
+                val_seq = val_seqs[j]
+                val_label = val_labels[j]
+                val_seq_tile = jnp.tile(val_seq, (5, 1))
+                val_label_tile = jnp.tile(val_label, 5)
+                val_loss += _adv_loss_func(forward, params, val_seq_tile, val_label_tile)
+            val_loss = val_loss/len(val_labels)
             #batch_loss += loss
             losses.append(loss)
+            val_losses.append(val_loss)
         #losses.append(batch_loss/len(shuffle_labels))
     #outs = forward.apply(params, seqs)
     #joint_outs = model_reduce(outs)
-    return params, losses
+    return params, losses, val_losses
 
 
 def bayesian_ei(f, params, init_x, Y):
