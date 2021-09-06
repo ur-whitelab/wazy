@@ -110,8 +110,9 @@ class TestMLP(unittest.TestCase):
         """Fit to a sine wave and make sure regressed model is
         is within 2 stddev of label.
         """
-        N = 16
+        N = 32
         x = np.linspace(0, np.pi, 1000)
+        np.random.seed(0)
         reps = x[np.random.randint(0, 1000, size=N)].reshape(-1, 1)
         labels = np.sin(reps)
         key = jax.random.PRNGKey(0)
