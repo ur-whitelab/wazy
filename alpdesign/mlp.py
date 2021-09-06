@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 @dataclass
 class EnsembleBlockConfig:
-    shape: tuple = (2,)
+    shape: tuple = (256, 128, 64, 2,)
     model_number: int = 5
 
 
@@ -28,6 +28,11 @@ class EnsembleBlock(hk.Module):
         return out
 
 
+def _transform_std(s):
+    # heuristic to make MLP output better behaved.
+    return 1e-3 + jax.nn.softplus(0.05 * s)
+
+
 def model_forward(x):
     e = EnsembleBlock()
     return e(x)
@@ -35,37 +40,40 @@ def model_forward(x):
 
 def model_reduce(out):
     mu = jnp.mean(out[..., 0], axis=0)
-    std = jnp.mean(out[..., 1] + out[..., 0]**2, axis=0) - mu**2
+    std = jnp.sqrt(jnp.mean(_transform_std(
+        out[..., 1])**2 + out[..., 0]**2, axis=0) - mu**2)
     return mu, std
 
 
 def _deep_ensemble_loss(forward, params, seqs, labels):
     out = forward.apply(params, seqs)
     means = out[..., 0]
-    stds = out[..., 1]
-    n_log_likelihoods = 0.5 * \
-        jnp.log(jnp.abs(stds)) + 0.5*(labels-means)**2/jnp.abs(stds)
+    sstds = _transform_std(out[..., 1])**2
+    n_log_likelihoods = jnp.log(sstds) + 0.5*(labels-means)**2/sstds
     return jnp.sum(n_log_likelihoods, axis=0)
 
 
-def _adv_loss_func(forward, params, seqs, labels):
+def _adv_loss_func(forward, params, seq, label):
+    # first tile sequence/labels for each model
+    seq_tile = jnp.tile(seq, (5, 1))
+    label_tile = jnp.tile(label, 5)
     epsilon = 1e-5
     grad_inputs = jax.grad(_deep_ensemble_loss, 2)(
-        forward, params, seqs, labels)
-    seqs_ = seqs + epsilon * jnp.sign(grad_inputs)
-    return _deep_ensemble_loss(forward, params, seqs, labels) + _deep_ensemble_loss(forward, params, seqs_, labels)
+        forward, params, seq_tile, label_tile)
+    seqs_ = seq_tile + epsilon * jnp.sign(grad_inputs)
+
+    return _deep_ensemble_loss(forward, params, seq_tile, label_tile) + _deep_ensemble_loss(forward, params, seqs_, label_tile)
 
 
 def shuffle_in_unison(key, a, b):
+    # NOTE to future self: do not try to rely on keys being same
+    # something about shape of arrays makes shuffle not the same
     assert len(a) == len(b)
     p = jax.random.permutation(key, len(a))
     return jnp.array([a[i] for i in p]), jnp.array([b[i] for i in p])
 
 
-def ensemble_train(key, forward, seqs, labels, val_seqs=None, val_labels=None):
-    learning_rate = 1e-2
-    n_step = 3
-
+def ensemble_train(key, forward, seqs, labels, val_seqs=None, val_labels=None, epochs=3, batch_size=8, learning_rate=1e-2):
     opt_init, opt_update = optax.chain(
         optax.scale_by_adam(b1=0.8, b2=0.9, eps=1e-4),
         optax.scale(-learning_rate)  # minus sign -- minimizing the loss
@@ -75,44 +83,42 @@ def ensemble_train(key, forward, seqs, labels, val_seqs=None, val_labels=None):
     params = forward.init(key, seqs)
     opt_state = opt_init(params)
 
+    # wrap loss in batch/sum
+    loss_fxn = lambda *args: jnp.mean(jax.vmap(_adv_loss_func,
+                                               in_axes=(None, None, 0, 0))(*args))
+
     @jax.jit
-    def train_step(opt_state, params, seq, label):
-        seq_tile = jnp.tile(seq, (5, 1))
-        label_tile = jnp.tile(label, 5)
-        grad = jax.grad(_adv_loss_func, 1)(
-            forward, params, seq_tile, label_tile)
+    def train_step(opt_state, params, seqs, labels):
+        loss, grad = jax.value_and_grad(loss_fxn, 1)(
+            forward, params, seqs, labels)
         updates, opt_state = opt_update(grad, opt_state, params)
         params = optax.apply_updates(params, updates)
-        loss = _adv_loss_func(forward, params, seq_tile, label_tile)
         return opt_state, params, loss
     losses = []
     val_losses = []
-    for i in range(n_step):
-        batch_loss = 0.  # average loss over each training step
+    for e in range(epochs):
         # shuffle seqs and labels
         key, key_ = jax.random.split(key, num=2)
         shuffle_seqs, shuffle_labels = shuffle_in_unison(key, seqs, labels)
-        for i in range(len(shuffle_labels)):
-            seq = shuffle_seqs[i]
-            label = shuffle_labels[i]
+        for i in range(0, len(shuffle_labels) // batch_size):
+            seq = shuffle_seqs[i:(i+1) * batch_size]
+            label = shuffle_labels[i:(i+1) * batch_size]
             opt_state, params, loss = train_step(opt_state, params, seq, label)
-            # compute validation loss
-            if val_seqs is not None:
-                val_loss = 0.
-                for j in range(len(val_labels)):
-                    val_seq = val_seqs[j]
-                    val_label = val_labels[j]
-                    val_seq_tile = jnp.tile(val_seq, (5, 1))
-                    val_label_tile = jnp.tile(val_label, 5)
-                    val_loss += _adv_loss_func(forward,
-                                               params, val_seq_tile, val_label_tile)
-                val_loss = val_loss/len(val_labels)
-                #batch_loss += loss
-                losses.append(loss)
-                val_losses.append(val_loss)
-        # losses.append(batch_loss/len(shuffle_labels))
-    #outs = forward.apply(params, seqs)
-    #joint_outs = model_reduce(outs)
+            losses.append(loss)
+        # compute validation loss
+        if val_seqs is not None:
+            val_loss = 0.
+            for i in range(0, len(val_labels) // batch_size):
+                seq = shuffle_seqs[i:(i+1) * batch_size]
+                label = shuffle_seqs[i:(i+1) * batch_size]
+                val_loss += _adv_loss_func(
+                    forward,
+                    params,
+                    val_seqs[i:(i+1) * batch_size],
+                    val_labels[i:(i+1) * batch_size])
+            val_loss = val_loss/len(val_labels) * batch_size
+            #batch_loss += loss
+            val_losses.append(val_loss)
     return (params, losses) if val_seqs is None else (params, losses, val_losses)
 
 
