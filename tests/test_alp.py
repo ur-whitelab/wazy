@@ -5,6 +5,7 @@ import jax_unirep
 import haiku as hk
 import jax
 import jax.numpy as jnp
+import functools
 
 
 class TestSeq(unittest.TestCase):
@@ -104,6 +105,25 @@ class TestMLP(unittest.TestCase):
         forward = hk.without_apply_rng(hk.transform(alpdesign.model_forward))
         params, losses = alpdesign.ensemble_train(
             key, forward, self.reps, self.labels)
+
+    def test_sine_train(self):
+        """Fit to a sine wave and make sure regressed model is
+        is within 2 stddev of label.
+        """
+        N = 16
+        x = np.linspace(0, np.pi, 1000)
+        reps = x[np.random.randint(0, 1000, size=N)].reshape(-1, 1)
+        labels = np.sin(reps)
+        key = jax.random.PRNGKey(0)
+        forward_t = hk.without_apply_rng(hk.transform(alpdesign.model_forward))
+        params, losses = alpdesign.ensemble_train(
+            key, forward_t, reps, labels, epochs=500, learning_rate=0.01)
+        forward = functools.partial(forward_t.apply, params)
+
+        for xi in x:
+            v = alpdesign.model_reduce(
+                forward(np.tile(xi, 5).reshape(-1, 1, 1)))
+            assert (v[0] - np.sin(xi))**2 < (2 * v[1]) ** 2
 
     def test_bayes_opt(self):
         key = jax.random.PRNGKey(0)
