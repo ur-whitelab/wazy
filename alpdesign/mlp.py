@@ -61,7 +61,8 @@ def shuffle_in_unison(key, a, b):
     p = jax.random.permutation(key, len(a))
     return jnp.array([a[i] for i in p]), jnp.array([b[i] for i in p])
 
-def ensemble_train(key, forward, seqs, labels, val_seqs, val_labels):
+
+def ensemble_train(key, forward, seqs, labels, val_seqs=None, val_labels=None):
     learning_rate = 1e-2
     n_step = 3
 
@@ -70,7 +71,7 @@ def ensemble_train(key, forward, seqs, labels, val_seqs, val_labels):
         optax.scale(-learning_rate)  # minus sign -- minimizing the loss
     )
 
-    key, key_ = jax.random.split(key, num=2)
+    key, _ = jax.random.split(key, num=2)
     params = forward.init(key, seqs)
     opt_state = opt_init(params)
 
@@ -87,8 +88,7 @@ def ensemble_train(key, forward, seqs, labels, val_seqs, val_labels):
     losses = []
     val_losses = []
     for i in range(n_step):
-        print(i)
-        batch_loss = 0. # average loss over each training step
+        batch_loss = 0.  # average loss over each training step
         # shuffle seqs and labels
         key, key_ = jax.random.split(key, num=2)
         shuffle_seqs, shuffle_labels = shuffle_in_unison(key, seqs, labels)
@@ -96,22 +96,24 @@ def ensemble_train(key, forward, seqs, labels, val_seqs, val_labels):
             seq = shuffle_seqs[i]
             label = shuffle_labels[i]
             opt_state, params, loss = train_step(opt_state, params, seq, label)
-            #compute validation loss
-            val_loss = 0.
-            for j in range(len(val_labels)):
-                val_seq = val_seqs[j]
-                val_label = val_labels[j]
-                val_seq_tile = jnp.tile(val_seq, (5, 1))
-                val_label_tile = jnp.tile(val_label, 5)
-                val_loss += _adv_loss_func(forward, params, val_seq_tile, val_label_tile)
-            val_loss = val_loss/len(val_labels)
-            #batch_loss += loss
-            losses.append(loss)
-            val_losses.append(val_loss)
-        #losses.append(batch_loss/len(shuffle_labels))
+            # compute validation loss
+            if val_seqs is not None:
+                val_loss = 0.
+                for j in range(len(val_labels)):
+                    val_seq = val_seqs[j]
+                    val_label = val_labels[j]
+                    val_seq_tile = jnp.tile(val_seq, (5, 1))
+                    val_label_tile = jnp.tile(val_label, 5)
+                    val_loss += _adv_loss_func(forward,
+                                               params, val_seq_tile, val_label_tile)
+                val_loss = val_loss/len(val_labels)
+                #batch_loss += loss
+                losses.append(loss)
+                val_losses.append(val_loss)
+        # losses.append(batch_loss/len(shuffle_labels))
     #outs = forward.apply(params, seqs)
     #joint_outs = model_reduce(outs)
-    return params, losses, val_losses
+    return (params, losses) if val_seqs is None else (params, losses, val_losses)
 
 
 def bayesian_ei(f, params, init_x, Y):
