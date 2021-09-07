@@ -73,14 +73,15 @@ def shuffle_in_unison(key, a, b):
     return jnp.array([a[i] for i in p]), jnp.array([b[i] for i in p])
 
 
-def ensemble_train(key, forward, seqs, labels, val_seqs=None, val_labels=None, epochs=3, batch_size=8, learning_rate=1e-2):
+def ensemble_train(key, forward, seqs, labels, val_seqs=None, val_labels=None, params=None, epochs=3, batch_size=8, learning_rate=1e-2):
     opt_init, opt_update = optax.chain(
         optax.scale_by_adam(b1=0.8, b2=0.9, eps=1e-4),
         optax.scale(-learning_rate)  # minus sign -- minimizing the loss
     )
 
     key, _ = jax.random.split(key, num=2)
-    params = forward.init(key, seqs)
+    if params == None:
+        params = forward.init(key, seqs)
     opt_state = opt_init(params)
 
     # wrap loss in batch/sum
@@ -131,15 +132,15 @@ def bayesian_ei(f, params, init_x, Y):
     best = jnp.max(Y)
     epsilon = 0.1
     z = (mu-best-epsilon)/std
-    return -(mu-best-epsilon)*norm.cdf(z) - std*norm.pdf(z)
+    return (mu-best-epsilon)*norm.cdf(z) + std*norm.pdf(z)
 
 
-def bayes_opt(f, params, labels):
+def bayes_opt(f, params, init_x, labels):
     key = jax.random.PRNGKey(0)
     key, _ = jax.random.split(key, num=2)
     eta = 1e-2
-    n_steps = 50
-    init_x = jax.random.normal(key, shape=(1, 1900))
+    n_steps = 500
+    #init_x = jax.random.normal(key, shape=(1, 1900))
     opt_init, opt_update, get_params = optimizers.adam(
         step_size=eta, b1=0.8, b2=0.9, eps=1e-5)
     opt_state = opt_init(init_x)
