@@ -65,12 +65,22 @@ def _adv_loss_func(forward, params, seq, label):
     return _deep_ensemble_loss(forward, params, seq_tile, label_tile) + _deep_ensemble_loss(forward, params, seqs_, label_tile)
 
 
-def shuffle_in_unison(key, a, b):
+def _shuffle_in_unison(key, a, b):
     # NOTE to future self: do not try to rely on keys being same
     # something about shape of arrays makes shuffle not the same
     assert len(a) == len(b)
     p = jax.random.permutation(key, len(a))
     return jnp.array([a[i] for i in p]), jnp.array([b[i] for i in p])
+
+
+def _fill_to_batch(x, y, key, batch_size):
+    if len(y) >= batch_size:
+        return x, y
+    i = jax.random.choice(key, jnp.arange(len(y)),
+                          shape=(batch_size,), replace=True)
+    x = x[i, ...]
+    y = y[i, ...]
+    return x, y
 
 
 def ensemble_train(key, forward, seqs, labels, val_seqs=None, val_labels=None, params=None, epochs=3, batch_size=8, learning_rate=1e-2):
@@ -79,9 +89,13 @@ def ensemble_train(key, forward, seqs, labels, val_seqs=None, val_labels=None, p
         optax.scale(-learning_rate)  # minus sign -- minimizing the loss
     )
 
-    key, _ = jax.random.split(key, num=2)
+    key, bkey = jax.random.split(key)
+
+    # fill in seqs/labels if too small
+    seqs, labels = _fill_to_batch(seqs, labels, bkey, batch_size)
+
     if params == None:
-        params = forward.init(key, seqs)
+        params = forward.init(key, jnp.tile(seqs[0], (5, 1)))
     opt_state = opt_init(params)
 
     # wrap loss in batch/sum
@@ -100,7 +114,7 @@ def ensemble_train(key, forward, seqs, labels, val_seqs=None, val_labels=None, p
     for e in range(epochs):
         # shuffle seqs and labels
         key, key_ = jax.random.split(key, num=2)
-        shuffle_seqs, shuffle_labels = shuffle_in_unison(key, seqs, labels)
+        shuffle_seqs, shuffle_labels = _shuffle_in_unison(key, seqs, labels)
         for i in range(0, len(shuffle_labels) // batch_size):
             seq = shuffle_seqs[i:(i+1) * batch_size]
             label = shuffle_labels[i:(i+1) * batch_size]
@@ -123,8 +137,9 @@ def ensemble_train(key, forward, seqs, labels, val_seqs=None, val_labels=None, p
     return (params, losses) if val_seqs is None else (params, losses, val_losses)
 
 
-def bayesian_ei(f, params, init_x, Y):
-    out = f.apply(params, init_x)
+def neg_bayesian_ei(f, params, init_x, Y):
+    # TODO More robust way to
+    out = f.apply(params, jnp.tile(init_x, (5, 1)))
     joint_out = model_reduce(out)
     mu = joint_out[0]
     std = joint_out[1]
@@ -132,28 +147,30 @@ def bayesian_ei(f, params, init_x, Y):
     best = jnp.max(Y)
     epsilon = 0.1
     z = (mu-best-epsilon)/std
-    return (mu-best-epsilon)*norm.cdf(z) + std*norm.pdf(z)
+    # we want to maximize, so neg!
+    return -((mu-best-epsilon)*norm.cdf(z) + std*norm.pdf(z))
 
 
-def bayes_opt(f, params, init_x, labels):
+def bayes_opt(f, params, labels, init_x=None, iter_num=500, learning_rate=1e-2):
     key = jax.random.PRNGKey(0)
     key, _ = jax.random.split(key, num=2)
-    eta = 1e-2
-    n_steps = 500
-    #init_x = jax.random.normal(key, shape=(1, 1900))
-    opt_init, opt_update, get_params = optimizers.adam(
-        step_size=eta, b1=0.8, b2=0.9, eps=1e-5)
-    opt_state = opt_init(init_x)
+    # assume using unirep
+    if init_x is None:
+        init_x = jax.random.normal(key, shape=(1, 1900))
+    # set-up noisy optimizer, to maybe overcome roughness
+    optimizer = optax.noisy_sgd(learning_rate)
+    opt_state = optimizer.init(init_x)
+    x = init_x
 
     @jax.jit
-    def step(i, opt_state):
-        x = get_params(opt_state)
-        loss, g = jax.value_and_grad(bayesian_ei, 2)(
+    def step(x, opt_state):
+        loss, g = jax.value_and_grad(neg_bayesian_ei, 2)(
             f, params, x, labels)
-        return opt_update(i, g, opt_state), loss
+        updates, opt_state = optimizer.update(g, opt_state)
+        x = optax.apply_updates(x, updates)
+        return x, opt_state, loss
 
-    for step_idx in range(n_steps):
-        opt_state, loss = step(step_idx, opt_state)
+    for step_idx in range(iter_num):
+        x, opt_state, loss = step(x, opt_state)
 
-    final_vec = get_params(opt_state)
-    return final_vec
+    return x
