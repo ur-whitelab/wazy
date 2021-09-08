@@ -126,7 +126,7 @@ def ensemble_train(key, forward, seqs, labels, val_seqs=None, val_labels=None, p
             for i in range(0, len(val_labels) // batch_size):
                 seq = shuffle_seqs[i:(i+1) * batch_size]
                 label = shuffle_seqs[i:(i+1) * batch_size]
-                val_loss += _adv_loss_func(
+                val_loss += loss_fxn(
                     forward,
                     params,
                     val_seqs[i:(i+1) * batch_size],
