@@ -1,5 +1,7 @@
+from operator import xor
+from alpdesign.utils import ALPHABET
 from unittest import case
-from alpdesign.mlp import build_model
+from alpdesign.mlp import bayes_opt, build_model
 import unittest
 import alpdesign
 import numpy as np
@@ -146,3 +148,26 @@ class TestMLP(unittest.TestCase):
         forward = functools.partial(forward_fxn_t.apply, params)
         final_vec = alpdesign.bayes_opt(forward, self.labels)
         assert jnp.squeeze(final_vec).shape == (1900,)
+
+    def test_e2e(self):
+        key = jax.random.PRNGKey(0)
+        c = alpdesign.EnsembleBlockConfig()
+        forward_fxn, full_forward_fxn = alpdesign.build_model(c)
+        full_forward_t = hk.without_apply_rng(hk.transform(full_forward_fxn))
+        params, losses = alpdesign.ensemble_train(
+            key, full_forward_t, c, self.reps, self.labels, epochs=5, learning_rate=0.01)
+        forward_t = hk.without_apply_rng(hk.transform(forward_fxn))
+        forward = functools.partial(forward_t.apply, params)
+
+        def e2e(logits):
+            s = alpdesign.SeqpropBlock()(logits)
+            us = alpdesign.seq2useq(s)
+            u = alpdesign.differentiable_jax_unirep(us)
+            return forward(u)
+        e2e_t = hk.transform(e2e)
+        e2e_params = e2e_t.init(keys, ??)
+        def e2e_fxn(x, key):
+            e2e_params, logits = x
+            e2e_t.apply(e2e_params, key, logits)
+        alpdesign.bayes_opt(e2e_fxn, self.labels, init_x=(..., ...))
+        # TODO (1) fix ?? above (2) make bayes_opt use a key on f (3) check on using tuple -> might need to use tree
