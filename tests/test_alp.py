@@ -1,3 +1,5 @@
+from unittest import case
+from alpdesign.mlp import build_model
 import unittest
 import alpdesign
 import numpy as np
@@ -93,18 +95,23 @@ class TestMLP(unittest.TestCase):
 
     def test_mlp(self):
         key = jax.random.PRNGKey(0)
-        forward = hk.without_apply_rng(hk.transform(alpdesign.model_forward))
+        c = alpdesign.EnsembleBlockConfig()
+        forward_fxn, full_forward_fxn = alpdesign.build_model(c)
+        forward = hk.without_apply_rng(hk.transform(forward_fxn))
         params = forward.init(key, self.reps)
         forward.apply(params, self.reps)
 
-        reduce = hk.without_apply_rng(hk.transform(alpdesign.model_reduce))
+        reduce = hk.without_apply_rng(hk.transform(full_forward_fxn))
         reduce.apply(params, self.reps)
 
     def test_train(self):
         key = jax.random.PRNGKey(0)
-        forward = hk.without_apply_rng(hk.transform(alpdesign.model_forward))
+        c = alpdesign.EnsembleBlockConfig()
+        forward_fxn, full_forward_fxn = alpdesign.build_model(c)
+        full_forward = hk.without_apply_rng(
+            hk.transform(full_forward_fxn))
         params, losses = alpdesign.ensemble_train(
-            key, forward, self.reps, self.labels)
+            key, full_forward, c, self.reps, self.labels)
 
     def test_sine_train(self):
         """Fit to a sine wave and make sure regressed model is
@@ -116,20 +123,26 @@ class TestMLP(unittest.TestCase):
         reps = x[np.random.randint(0, 1000, size=N)].reshape(-1, 1)
         labels = np.sin(reps)
         key = jax.random.PRNGKey(0)
-        forward_t = hk.without_apply_rng(hk.transform(alpdesign.model_forward))
+        c = alpdesign.EnsembleBlockConfig()
+        forward_fxn, full_forward_fxn = alpdesign.build_model(c)
+        full_forward_t = hk.without_apply_rng(hk.transform(full_forward_fxn))
         params, losses = alpdesign.ensemble_train(
-            key, forward_t, reps, labels, epochs=500, learning_rate=0.01)
+            key, full_forward_t, c, reps, labels, epochs=500, learning_rate=0.01)
+        forward_t = hk.without_apply_rng(hk.transform(forward_fxn))
         forward = functools.partial(forward_t.apply, params)
 
         for xi in x:
-            v = alpdesign.model_reduce(
-                forward(np.tile(xi, 5).reshape(-1, 1, 1)))
+            v = forward(xi[np.newaxis])
             assert (v[0] - np.sin(xi))**2 < (2 * v[1]) ** 2
 
     def test_bayes_opt(self):
         key = jax.random.PRNGKey(0)
-        forward = hk.without_apply_rng(hk.transform(alpdesign.model_forward))
+        c = alpdesign.EnsembleBlockConfig()
+        forward_fxn, full_forward_fxn = alpdesign.build_model(c)
+        full_forward_t = hk.without_apply_rng(hk.transform(full_forward_fxn))
+        forward_fxn_t = hk.without_apply_rng(hk.transform(forward_fxn))
         params, losses = alpdesign.ensemble_train(
-            key, forward, self.reps, self.labels)
-        final_vec = alpdesign.bayes_opt(forward, params, self.labels)
+            key, full_forward_t, c, self.reps, self.labels)
+        forward = functools.partial(forward_fxn_t.apply, params)
+        final_vec = alpdesign.bayes_opt(forward, self.labels)
         assert jnp.squeeze(final_vec).shape == (1900,)
