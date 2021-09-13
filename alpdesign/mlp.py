@@ -146,20 +146,19 @@ def ensemble_train(key, forward_t, config, seqs, labels, val_seqs=None, val_labe
     return (params, losses) if val_seqs is None else (params, losses, val_losses)
 
 
-def neg_bayesian_ei(key, f, x, Y):
+def neg_bayesian_ei(key, f, x, Y, epsilon):
     # f here is e2e_fxn(x, key) x is (e2e_params, logits)
     joint_out = f(x, key)
     mu = joint_out[0]
-    std = joint_out[1]
+    std = jnp.abs(joint_out[1])
     #mus = f.apply(params, X)[...,0]
     best = jnp.max(Y)
-    epsilon = 0.1
-    z = (mu-best-epsilon)/std
+    z = (mu-best-epsilon)/std 
     # we want to maximize, so neg!
     return -((mu-best-epsilon)*norm.cdf(z) + std*norm.pdf(z))
 
 
-def bayes_opt(key, f, labels, init_x=None, iter_num=500, learning_rate=1e-2):
+def bayes_opt(key, f, labels, init_x=None, iter_num=500, learning_rate=1e-2, epsilon=0.01):
     #key = jax.random.PRNGKey(0)
 
     # assume using unirep
@@ -173,7 +172,7 @@ def bayes_opt(key, f, labels, init_x=None, iter_num=500, learning_rate=1e-2):
     @jax.jit
     def step(x, opt_state, key):
         loss, g = jax.value_and_grad(neg_bayesian_ei, 2)(
-            key, f, x, labels)
+            key, f, x, labels, epsilon)
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
         return x, opt_state, loss
