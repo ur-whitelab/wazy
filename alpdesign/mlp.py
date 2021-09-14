@@ -154,7 +154,7 @@ def neg_bayesian_ei(key, f, x, Y, epsilon):
     best = jnp.max(Y)
     z = (mu-best-epsilon)/std
     # we want to maximize, so neg!
-    return jnp.mean(-((mu-best-epsilon)*norm.cdf(z) + std*norm.pdf(z)))
+    return -((mu-best-epsilon)*norm.cdf(z) + std*norm.pdf(z))
 
 
 def bayes_opt(key, f, labels, init_x=None, iter_num=500, learning_rate=1e-2, epsilon=0.01):
@@ -168,9 +168,14 @@ def bayes_opt(key, f, labels, init_x=None, iter_num=500, learning_rate=1e-2, eps
     opt_state = optimizer.init(init_x)
     x = init_x
 
+    # reduce it so we can take grad
+    reduced_neg_bayesian_ei = lambda *args: jnp.mean(neg_bayesian_ei(*args))
+
     @jax.jit
     def step(x, opt_state, key):
-        loss, g = jax.value_and_grad(neg_bayesian_ei, 2)(
+        # work with non-reduced, so we can get individual batch eis
+        loss = neg_bayesian_ei(key, f, x, labels, epsilon)
+        g = jax.grad(reduced_neg_bayesian_ei, 2)(
             key, f, x, labels, epsilon)
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
