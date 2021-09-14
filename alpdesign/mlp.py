@@ -152,12 +152,14 @@ def neg_bayesian_ei(key, f, x, Y, epsilon):
     # f here is e2e_fxn(x, key) x is (e2e_params, logits)
     joint_out = f(x, key)
     mu = joint_out[0]
-    std = jnp.abs(joint_out[1])
+    std = joint_out[1]
     #mus = f.apply(params, X)[...,0]
     best = jnp.max(Y)
-    z = (mu-best-epsilon)/std 
+    z = (mu-best-epsilon)/std
+    #print(z)
+    #print(norm.cdf(z)) 
     # we want to maximize, so neg!
-    return -((mu-best-epsilon)*norm.cdf(z) + std*norm.pdf(z))
+    return -((mu-best-epsilon)*norm.cdf(z,loc=-0.5) + std*norm.pdf(z,loc=-0.5))
 
 
 def bayes_opt(key, f, labels, init_x=None, iter_num=500, learning_rate=1e-2, epsilon=0.01):
