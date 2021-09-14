@@ -6,6 +6,7 @@ import jax.scipy.stats.norm as norm
 import optax
 from jax.experimental import optimizers
 from dataclasses import dataclass
+from .seq import *
 
 
 @dataclass
@@ -144,6 +145,7 @@ def ensemble_train(key, forward_t, config, seqs, labels, val_seqs=None, val_labe
             #batch_loss += loss
             val_losses.append(val_loss)
     return (params, losses) if val_seqs is None else (params, losses, val_losses)
+
 
 
 def neg_bayesian_ei(key, f, x, Y, epsilon):
