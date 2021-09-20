@@ -145,7 +145,8 @@ class TestMLP(unittest.TestCase):
         forward_fxn_t = hk.without_apply_rng(hk.transform(forward_fxn))
         params, losses = alpdesign.ensemble_train(
             key, full_forward_t, c, self.reps, self.labels)
-        forward = functools.partial(forward_fxn_t.apply, params)
+
+        def forward(x, key): return forward_fxn_t.apply(params, x)
         out = alpdesign.bayes_opt(key, forward, self.labels)
         #assert jnp.squeeze(final_vec).shape == (1900,)
 
@@ -159,8 +160,8 @@ class TestMLP(unittest.TestCase):
         forward_t = hk.without_apply_rng(hk.transform(forward_fxn))
         forward = functools.partial(forward_t.apply, params)
 
-
         # e2e is a haiku func
+
         def e2e(logits):
             s = alpdesign.SeqpropBlock()(logits)
             us = alpdesign.seq2useq(s)
@@ -174,5 +175,5 @@ class TestMLP(unittest.TestCase):
             e2e_params, logits = x
             yhat = e2e_t.apply(e2e_params, key, logits)
             return yhat
-        alpdesign.bayes_opt(key, e2e_fxn, self.labels, init_x=(e2e_params, init_logits), iter_num=10)
-        # TODO (1) fix ?? above (2) make bayes_opt use a key on f (3) check on using tuple -> might need to use tree
+        alpdesign.bayes_opt(key, e2e_fxn, self.labels, init_x=(
+            e2e_params, init_logits), iter_num=10)
