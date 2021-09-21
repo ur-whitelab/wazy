@@ -102,7 +102,8 @@ def ensemble_train(key, forward_t, config, seqs, labels, val_seqs=None, val_labe
 
     # fill in seqs/labels if too small
     seqs, labels = _fill_to_batch(seqs, labels, bkey, batch_size)
-
+    if val_seqs is not None:
+        val_seqs, val_labels = _fill_to_batch(val_seqs, val_labels, bkey, batch_size)  
     if params == None:
         params = forward_t.init(key, jnp.tile(
             seqs[0], (config.model_number, 1)))
@@ -135,8 +136,6 @@ def ensemble_train(key, forward_t, config, seqs, labels, val_seqs=None, val_labe
         if val_seqs is not None:
             val_loss = 0.
             for i in range(0, len(val_labels) // batch_size):
-                seq = shuffle_seqs[i:(i+1) * batch_size]
-                label = shuffle_seqs[i:(i+1) * batch_size]
                 val_loss += loss_fxn(
                     params,
                     val_seqs[i:(i+1) * batch_size],
