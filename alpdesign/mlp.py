@@ -92,7 +92,7 @@ def _fill_to_batch(x, y, key, batch_size):
     return x, y
 
 
-def ensemble_train(key, forward_t, config, seqs, labels, val_seqs=None, val_labels=None, params=None, epochs=3, batch_size=8, learning_rate=1e-2):
+def ensemble_train(key, forward_t, config, seqs, labels, val_seqs=None, val_labels=None, params=None, epochs=160, batch_size=8, learning_rate=1e-2):
     opt_init, opt_update = optax.chain(
         optax.scale_by_adam(b1=0.8, b2=0.9, eps=1e-4),
         optax.scale(-learning_rate)  # minus sign -- minimizing the loss
@@ -123,7 +123,7 @@ def ensemble_train(key, forward_t, config, seqs, labels, val_seqs=None, val_labe
         return opt_state, params, loss
     losses = []
     val_losses = []
-    for e in range(epochs):
+    for e in range(epochs//(len(labels)//batch_size)):
         # shuffle seqs and labels
         key, key_ = jax.random.split(key, num=2)
         shuffle_seqs, shuffle_labels = _shuffle_in_unison(key, seqs, labels)
