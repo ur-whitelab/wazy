@@ -1,3 +1,7 @@
+from operator import xor
+from alpdesign.utils import ALPHABET
+from unittest import case
+from alpdesign.mlp import bayes_opt, build_model
 import unittest
 import alpdesign
 import numpy as np
@@ -93,18 +97,23 @@ class TestMLP(unittest.TestCase):
 
     def test_mlp(self):
         key = jax.random.PRNGKey(0)
-        forward = hk.without_apply_rng(hk.transform(alpdesign.model_forward))
+        c = alpdesign.EnsembleBlockConfig()
+        forward_fxn, full_forward_fxn = alpdesign.build_model(c)
+        forward = hk.without_apply_rng(hk.transform(forward_fxn))
         params = forward.init(key, self.reps)
         forward.apply(params, self.reps)
 
-        reduce = hk.without_apply_rng(hk.transform(alpdesign.model_reduce))
+        reduce = hk.without_apply_rng(hk.transform(full_forward_fxn))
         reduce.apply(params, self.reps)
 
     def test_train(self):
         key = jax.random.PRNGKey(0)
-        forward = hk.without_apply_rng(hk.transform(alpdesign.model_forward))
+        c = alpdesign.EnsembleBlockConfig()
+        forward_fxn, full_forward_fxn = alpdesign.build_model(c)
+        full_forward = hk.without_apply_rng(
+            hk.transform(full_forward_fxn))
         params, losses = alpdesign.ensemble_train(
-            key, forward, self.reps, self.labels)
+            key, full_forward, c, self.reps, self.labels)
 
     def test_sine_train(self):
         """Fit to a sine wave and make sure regressed model is
@@ -116,20 +125,55 @@ class TestMLP(unittest.TestCase):
         reps = x[np.random.randint(0, 1000, size=N)].reshape(-1, 1)
         labels = np.sin(reps)
         key = jax.random.PRNGKey(0)
-        forward_t = hk.without_apply_rng(hk.transform(alpdesign.model_forward))
+        c = alpdesign.EnsembleBlockConfig()
+        forward_fxn, full_forward_fxn = alpdesign.build_model(c)
+        full_forward_t = hk.without_apply_rng(hk.transform(full_forward_fxn))
         params, losses = alpdesign.ensemble_train(
-            key, forward_t, reps, labels, epochs=500, learning_rate=0.01)
+            key, full_forward_t, c, reps, labels, epochs=500, learning_rate=0.01)
+        forward_t = hk.without_apply_rng(hk.transform(forward_fxn))
         forward = functools.partial(forward_t.apply, params)
 
         for xi in x:
-            v = alpdesign.model_reduce(
-                forward(np.tile(xi, 5).reshape(-1, 1, 1)))
+            v = forward(xi[np.newaxis])
             assert (v[0] - np.sin(xi))**2 < (2 * v[1]) ** 2
 
     def test_bayes_opt(self):
         key = jax.random.PRNGKey(0)
-        forward = hk.without_apply_rng(hk.transform(alpdesign.model_forward))
+        c = alpdesign.EnsembleBlockConfig()
+        forward_fxn, full_forward_fxn = alpdesign.build_model(c)
+        full_forward_t = hk.without_apply_rng(hk.transform(full_forward_fxn))
+        forward_fxn_t = hk.without_apply_rng(hk.transform(forward_fxn))
         params, losses = alpdesign.ensemble_train(
-            key, forward, self.reps, self.labels)
-        final_vec = alpdesign.bayes_opt(forward, params, self.labels)
-        assert jnp.squeeze(final_vec).shape == (1900,)
+            key, full_forward_t, c, self.reps, self.labels)
+
+        def forward(x, key): return forward_fxn_t.apply(params, x)
+        out = alpdesign.bayes_opt(key, forward, self.labels)
+        #assert jnp.squeeze(final_vec).shape == (1900,)
+
+    def test_e2e(self):
+        key = jax.random.PRNGKey(0)
+        c = alpdesign.EnsembleBlockConfig()
+        forward_fxn, full_forward_fxn = alpdesign.build_model(c)
+        full_forward_t = hk.without_apply_rng(hk.transform(full_forward_fxn))
+        params, losses = alpdesign.ensemble_train(
+            key, full_forward_t, c, self.reps, self.labels, epochs=5, learning_rate=0.01)
+        forward_t = hk.without_apply_rng(hk.transform(forward_fxn))
+        forward = functools.partial(forward_t.apply, params)
+
+        # e2e is a haiku func
+
+        def e2e(logits):
+            s = alpdesign.SeqpropBlock()(logits)
+            us = alpdesign.seq2useq(s)
+            u = alpdesign.differentiable_jax_unirep(us)
+            return forward(u)
+        e2e_t = hk.transform(e2e)
+        init_logits = jax.random.normal(key, shape=((5, 20)))
+        e2e_params = e2e_t.init(key, init_logits)
+
+        def e2e_fxn(x, key):
+            e2e_params, logits = x
+            yhat = e2e_t.apply(e2e_params, key, logits)
+            return yhat
+        alpdesign.bayes_opt(key, e2e_fxn, self.labels, init_x=(
+            e2e_params, init_logits), iter_num=10)
