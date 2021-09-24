@@ -106,7 +106,7 @@ class TestMLP(unittest.TestCase):
     def test_mlp(self):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        reduce, forward = alpdesign.build_model(c, True)
+        reduce, forward = alpdesign.build_model(c)
         params = forward.init(key, self.reps)
         forward.apply(params, self.reps)
 
@@ -131,10 +131,8 @@ class TestMLP(unittest.TestCase):
         labels = np.sin(reps)
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        forward_t, full_forward_t = alpdesign.build_model(c, True)
-        params, losses = alpdesign.ensemble_train(
-            key, full_forward_t, c, reps, labels
-        )
+        forward_t, full_forward_t = alpdesign.build_model(c)
+        params, losses = alpdesign.ensemble_train(key, full_forward_t, c, reps, labels)
         forward = functools.partial(forward_t.apply, params)
 
         for xi in x:
@@ -144,8 +142,7 @@ class TestMLP(unittest.TestCase):
     def test_bayes_opt(self):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        forward_fxn_t, full_forward_t = alpdesign.build_model(
-            c, without_rng=True)
+        forward_fxn_t, full_forward_t = alpdesign.build_model(c)
         params, losses = alpdesign.ensemble_train(
             key, full_forward_t, c, self.reps, self.labels
         )
@@ -160,7 +157,7 @@ class TestMLP(unittest.TestCase):
     def test_e2e(self):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        forward_t, full_forward_t = alpdesign.build_model(c, True)
+        forward_t, full_forward_t = alpdesign.build_model(c)
         params, losses = alpdesign.ensemble_train(
             key, full_forward_t, c, self.reps, self.labels
         )
@@ -182,8 +179,8 @@ class TestMLP(unittest.TestCase):
             e2e_params, logits = x
             yhat = e2e_t.apply(e2e_params, key, logits)
             return yhat
+
         aconfig = alpdesign.AlgConfig(bo_epochs=10)
         alpdesign.bayes_opt(
-            key, e2e_fxn, self.labels, init_x=(
-                e2e_params, init_logits), aconfig=aconfig
+            key, e2e_fxn, self.labels, init_x=(e2e_params, init_logits), aconfig=aconfig
         )
