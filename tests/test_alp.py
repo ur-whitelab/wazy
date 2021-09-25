@@ -108,9 +108,9 @@ class TestMLP(unittest.TestCase):
         c = alpdesign.EnsembleBlockConfig()
         reduce, forward = alpdesign.build_model(c)
         params = forward.init(key, self.reps)
-        forward.apply(params, self.reps)
+        forward.apply(params, None, self.reps)
 
-        reduce.apply(params, self.reps)
+        reduce.apply(params, None, self.reps)
 
     def test_train(self):
         key = jax.random.PRNGKey(0)
@@ -132,8 +132,9 @@ class TestMLP(unittest.TestCase):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
         forward_t, full_forward_t = alpdesign.build_model(c)
-        params, losses = alpdesign.ensemble_train(key, full_forward_t, c, reps, labels)
-        forward = functools.partial(forward_t.apply, params)
+        params, losses = alpdesign.ensemble_train(
+            key, full_forward_t, c, reps, labels)
+        forward = functools.partial(forward_t.apply, params, None)
 
         for xi in x:
             v = forward(xi[np.newaxis])
@@ -147,8 +148,7 @@ class TestMLP(unittest.TestCase):
             key, full_forward_t, c, self.reps, self.labels
         )
 
-        def forward(x, key):
-            return forward_fxn_t.apply(params, x)
+        forward = functools.partial(forward_fxn_t.apply, params)
 
         init_x = jax.random.normal(key, shape=(1, 1900))
         out = alpdesign.bayes_opt(key, forward, self.labels, init_x)
@@ -161,7 +161,7 @@ class TestMLP(unittest.TestCase):
         params, losses = alpdesign.ensemble_train(
             key, full_forward_t, c, self.reps, self.labels
         )
-        forward = functools.partial(forward_t.apply, params)
+        forward = functools.partial(forward_t.apply, params, None)
 
         # e2e is a haiku func
 
@@ -182,5 +182,6 @@ class TestMLP(unittest.TestCase):
 
         aconfig = alpdesign.AlgConfig(bo_epochs=10)
         alpdesign.bayes_opt(
-            key, e2e_fxn, self.labels, init_x=(e2e_params, init_logits), aconfig=aconfig
+            key, e2e_fxn, self.labels, init_x=(
+                e2e_params, init_logits), aconfig=aconfig
         )
