@@ -12,9 +12,9 @@ from .seq import *
 @dataclass
 class EnsembleBlockConfig:
     shape: tuple = (
-        256,
-        256,
-        32,
+ 
+        64,
+        64,
         2,
     )
     model_number: int = 10
@@ -28,10 +28,11 @@ class AlgConfig:
     train_adam_b1: float = 0.8
     train_adam_b2: float = 0.9
     train_adam_eps: float = 1e-4
+    weight_decay: float = 1e-3
     bo_epochs: int = 500
     bo_lr: float = 1e-2
-    bo_xi: float = 1e-2
-    bo_batch_size: int = 64
+    bo_xi: float = 1e-1
+    bo_batch_size: int = 16
     global_norm: float = 1
 
 
@@ -51,18 +52,16 @@ class EnsembleBlock(hk.Module):
         return out
 
 
-def _transform_std(s):
+def _transform_var(s):
     # heuristic to make MLP output better behaved.
     return 1e-3 + jax.nn.softplus(s)
 
 
 def model_reduce(out):
     mu = jnp.mean(out[..., 0], axis=0)
-    std = jnp.sqrt(
-        jnp.mean(_transform_std(out[..., 1]) **
-                 2 + out[..., 0] ** 2, axis=0) - mu ** 2
-    )
-    return mu, std
+    var = jnp.mean(_transform_var(out[..., 1])+out[..., 0]**2, axis=0) - mu**2
+  
+    return mu, var
 
 
 def build_model(config):
@@ -83,7 +82,7 @@ def build_model(config):
 def _deep_ensemble_loss(params, key, forward, seqs, labels):
     out = forward(params, key, seqs)
     means = out[..., 0]
-    sstds = _transform_std(out[..., 1]) ** 2
+    sstds = _transform_var(out[..., 1])
     n_log_likelihoods = jnp.log(sstds) + 0.5 * (labels - means) ** 2 / sstds
     return jnp.sum(n_log_likelihoods, axis=0)
 
@@ -92,7 +91,7 @@ def _adv_loss_func(forward, M, params, key, seq, label):
     # first tile sequence/labels for each model
     seq_tile = jnp.tile(seq, (M, 1))
     label_tile = jnp.tile(label, M)
-    epsilon = 1e-2
+    epsilon = 1e-1
     key1, key2 = jax.random.split(key)
     grad_inputs = jax.grad(_deep_ensemble_loss, 3)(
         params, key, forward, seq_tile, label_tile
@@ -142,6 +141,7 @@ def ensemble_train(
             b2=aconfig.train_adam_b2,
             eps=aconfig.train_adam_eps,
         ),
+        optax.add_decayed_weights(aconfig.weight_decay),
         optax.scale(-aconfig.train_lr),  # minus sign -- minimizing the loss
     )
 
@@ -203,7 +203,7 @@ def ensemble_train(
 def neg_bayesian_ei(key, f, x, Y, xi):
     joint_out = f(key, x)
     mu = joint_out[0]
-    std = joint_out[1]
+    std = jnp.sqrt(joint_out[1])
     best = jnp.max(Y)
     z = (mu - best - xi) / std
     # we want to maximize, so neg!
