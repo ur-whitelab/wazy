@@ -1,3 +1,4 @@
+from alpdesign import seq
 from operator import xor
 from alpdesign.utils import ALPHABET
 from unittest import case
@@ -132,8 +133,7 @@ class TestMLP(unittest.TestCase):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
         forward_t, full_forward_t = alpdesign.build_model(c)
-        params, losses = alpdesign.ensemble_train(
-            key, full_forward_t, c, reps, labels)
+        params, losses = alpdesign.ensemble_train(key, full_forward_t, c, reps, labels)
         forward = functools.partial(forward_t.apply, params, None)
 
         for xi in x:
@@ -157,31 +157,8 @@ class TestMLP(unittest.TestCase):
     def test_e2e(self):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        forward_t, full_forward_t = alpdesign.build_model(c)
-        params, losses = alpdesign.ensemble_train(
-            key, full_forward_t, c, self.reps, self.labels
-        )
-        forward = functools.partial(forward_t.apply, params, None)
-
-        # e2e is a haiku func
-
-        def e2e(logits):
-            s = alpdesign.SeqpropBlock()(logits)
-            us = alpdesign.seq2useq(s)
-            u = alpdesign.differentiable_jax_unirep(us)
-            return forward(u)
-
-        e2e_t = hk.transform(e2e)
-        init_logits = jax.random.normal(key, shape=((5, 20)))
-        e2e_params = e2e_t.init(key, init_logits)
-
-        def e2e_fxn(x, key):
-            e2e_params, logits = x
-            yhat = e2e_t.apply(e2e_params, key, logits)
-            return yhat
-
-        aconfig = alpdesign.AlgConfig(bo_epochs=10)
-        alpdesign.bayes_opt(
-            key, e2e_fxn, self.labels, init_x=(
-                e2e_params, init_logits), aconfig=aconfig
+        forward_t, full_forward_t, seq_t = alpdesign.build_e2e(c)
+        gen = lambda k, n: jax.random.normal(key, shape=(n, 10, 20))
+        alpdesign.alg_iter(
+            key, self.reps, self.labels, full_forward_t, seq_t, c, x0_gernerator=gen
         )
