@@ -43,8 +43,9 @@ class SingleBlock(hk.Module):
 
     def __call__(self, x):
         for idx, dim in enumerate(self.config.shape):
-            x = hk.nets.MLP((dim,))(x)
+            x = hk.Linear(dim)(x)
             if idx < len(self.config.shape) - 1:
+                x = jax.nn.relu(x)
                 x = hk.LayerNorm(
                     axis=-1,
                     create_scale=True,
