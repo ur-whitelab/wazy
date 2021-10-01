@@ -36,6 +36,23 @@ class AlgConfig:
     global_norm: float = 1
 
 
+class SingleBlock(hk.Module):
+    def __init__(self, config: EnsembleBlockConfig, name=None):
+        super().__init__(name=name)
+        self.config = config
+
+    def __call__(self, x):
+        for idx, dim in enumerate(self.config.shape):
+            x = hk.nets.MLP((dim,))(x)
+            if idx < len(self.config.shape) - 1:
+                x = hk.LayerNorm(
+                    axis=-1,
+                    create_scale=True,
+                    create_offset=True)(x)
+        return x
+
+
+
 class EnsembleBlock(hk.Module):
     def __init__(self, config: EnsembleBlockConfig, name=None):
         super().__init__(name=name)
@@ -45,7 +62,8 @@ class EnsembleBlock(hk.Module):
     def __call__(self, x):
         out = jnp.array(
             [
-                hk.nets.MLP(self.config.shape)(x[i])
+                #hk.nets.MLP(self.config.shape)(x[i])
+                SingleBlock(self.config)(x[i])
                 for i in range(self.config.model_number)
             ]
         )
