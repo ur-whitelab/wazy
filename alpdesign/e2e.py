@@ -2,6 +2,7 @@ import haiku as hk
 from .mlp import EnsembleBlock, model_reduce
 from .seq import SeqpropBlock
 from .utils import differentiable_jax_unirep, seq2useq
+import jax.numpy as jnp
 
 
 def build_e2e(config):

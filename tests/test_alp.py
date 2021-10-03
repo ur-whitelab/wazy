@@ -162,7 +162,7 @@ class TestMLP(unittest.TestCase):
         def gen(k, n): return jax.random.normal(key, shape=(n, 10, 20))
         key1, key2 = jax.random.split(key)
         start_params = seq_t.init(key1, jnp.tile(
-            self.reps[0], (c.model_number, 1)))
+            jnp.squeeze(gen(key2, 1)), (c.model_number, 1)))
         alpdesign.alg_iter(
             key2, self.reps, self.labels, full_forward_t, seq_t, c, x0_gen=gen,
             start_params=start_params
