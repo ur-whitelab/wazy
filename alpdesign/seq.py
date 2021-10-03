@@ -6,10 +6,59 @@ from .utils import *
 import haiku as hk
 
 
-ALPHABET_Unirep = ['-', 'M', 'R', 'H', 'K', 'D', 'E', 'S', 'T', 'N', 'Q', 'C', 'U',
-                   'G', 'P', 'A', 'V', 'I', 'F', 'Y', 'W', 'L', 'O', 'X', 'Z', 'B', 'J', 'start', 'stop']
-ALPHABET = ['A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H',
-            'I', 'L', 'K', 'M', 'F', 'P', 'S', 'T', 'W', 'Y', 'V']
+ALPHABET_Unirep = [
+    "-",
+    "M",
+    "R",
+    "H",
+    "K",
+    "D",
+    "E",
+    "S",
+    "T",
+    "N",
+    "Q",
+    "C",
+    "U",
+    "G",
+    "P",
+    "A",
+    "V",
+    "I",
+    "F",
+    "Y",
+    "W",
+    "L",
+    "O",
+    "X",
+    "Z",
+    "B",
+    "J",
+    "start",
+    "stop",
+]
+ALPHABET = [
+    "A",
+    "R",
+    "N",
+    "D",
+    "C",
+    "Q",
+    "E",
+    "G",
+    "H",
+    "I",
+    "L",
+    "K",
+    "M",
+    "F",
+    "P",
+    "S",
+    "T",
+    "W",
+    "Y",
+    "V",
+]
 
 # https://arxiv.org/abs/2005.11275
 
@@ -18,8 +67,10 @@ ALPHABET = ['A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H',
 def disc_ss(key, logits):
     key, sub_key = jax.random.split(key, num=2)
     sampled_onehot = jax.nn.one_hot(
-        jax.random.categorical(key, logits), logits.shape[-1])
+        jax.random.categorical(key, logits), logits.shape[-1]
+    )
     return sampled_onehot
+
 
 # customized gradient for back propagation
 
@@ -37,21 +88,20 @@ def disc_ss_jvp(key, primals, tangents):
 def norm_layer(logits, r, b):
     epsilon = 1e-5
     M, N = jnp.shape(logits)
-    miu = jnp.sum(logits) / (M*N)
-    std = jnp.sqrt(jnp.sum((logits - miu)**2) / (M*N))
-    norm_logits = (logits - miu) / (std**2 + epsilon)
+    miu = jnp.sum(logits) / (M * N)
+    std = jnp.sqrt(jnp.sum((logits - miu) ** 2) / (M * N))
+    norm_logits = (logits - miu) / (std ** 2 + epsilon)
     scaled_logits = norm_logits * r + b
     return scaled_logits
 
 
 class SeqpropBlock(hk.Module):
     def __init__(self):
-        super().__init__(name='seqprop')
+        super().__init__(name="seqprop")
 
     def __call__(self, logits):
         r = hk.get_parameter("r", shape=[], dtype=logits.dtype, init=jnp.ones)
-        b = hk.get_parameter(
-            "b",  shape=[], dtype=logits.dtype, init=jnp.zeros)
+        b = hk.get_parameter("b", shape=[], dtype=logits.dtype, init=jnp.zeros)
         norm_logits = norm_layer(logits, r, b)
         key = hk.next_rng_key()
         sampled_vec = disc_ss(key, norm_logits)
@@ -71,8 +121,9 @@ def loss_func(target_rep, sampled_vec):
     h_avg = differentiable_jax_unirep(sampled_vec_unirep)
 
     # loss = jnp.mean(((target_rep - h_avg)/target_rep)**2) # mean squared error
-    loss = 1-jnp.sum(jnp.vdot(h_avg, target_rep))/jnp.sqrt(jnp.sum(h_avg**2)
-                                                           * jnp.sum(target_rep**2))  # cosine similarity
+    loss = 1 - jnp.sum(jnp.vdot(h_avg, target_rep)) / jnp.sqrt(
+        jnp.sum(h_avg ** 2) * jnp.sum(target_rep ** 2)
+    )  # cosine similarity
     return loss
 
 
@@ -80,12 +131,13 @@ def packed_loss_func(key, logits, params, target_rep):
     sampled_vec = forward_seqprop.apply(params, key, logits)
     return loss_func(target_rep, sampled_vec)
 
+
 # @jax.partial(jax.jit, static_argnums=4)
 
 
 def train_seqprop(key, target_rep, init_logits, init_params, iter_num=100):
     opt_init, opt_update, get_params = optimizers.adam(step_size=1e-1)
-    #opt_init, opt_update, get_params = optimizers.adagrad(step_size=1e-1)
+    # opt_init, opt_update, get_params = optimizers.adagrad(step_size=1e-1)
     opt_state = opt_init((init_logits, init_params))  # initial state
     logits_trace = []
     loss_trace = []
@@ -97,8 +149,7 @@ def train_seqprop(key, target_rep, init_logits, init_params, iter_num=100):
         logits, params = p
         sampled_vec = forward_seqprop.apply(params, key, logits)
         loss = loss_func(target_rep, sampled_vec)
-        g = jax.grad(packed_loss_func, (1, 2))(
-            key, logits, params, target_rep)
+        g = jax.grad(packed_loss_func, (1, 2))(key, logits, params, target_rep)
         return opt_update(i, g, opt_state), loss
 
     for step_idx in range(iter_num):
@@ -111,7 +162,9 @@ def train_seqprop(key, target_rep, init_logits, init_params, iter_num=100):
     return sampled_vec, final_logits, logits_trace, loss_trace
 
 
-def pso_search(sampled_vec, final_logits, loss_trace, topk):  # particle swarm optimization
+def pso_search(
+    sampled_vec, final_logits, loss_trace, topk
+):  # particle swarm optimization
     indices = jnp.argsort(loss_trace[-1])[:topk]
     pso_loss = jnp.take(loss_trace[-1], indices)
     pso_loss_trace = []
@@ -136,9 +189,17 @@ def _update_best(best_loss, best_seqs, loss, seqs):
     return best_loss, best_seqs
 
 
-def pso_train(key, target_rep, logits, params, batch_size=16, epochs=6, drop_frac=0.5, iter_num=100):
-    b_train_func = jax.vmap(
-        train_seqprop, (0, None, 0, None, None), (0, 0, 0, 0))
+def pso_train(
+    key,
+    target_rep,
+    logits,
+    params,
+    batch_size=16,
+    epochs=6,
+    drop_frac=0.5,
+    iter_num=100,
+):
+    b_train_func = jax.vmap(train_seqprop, (0, None, 0, None, None), (0, 0, 0, 0))
     pso_topk = int(batch_size * drop_frac)
     pso_loss_traces = []
     best_loss = [1e10] * pso_topk
@@ -147,20 +208,25 @@ def pso_train(key, target_rep, logits, params, batch_size=16, epochs=6, drop_fra
         batch_keys = jax.random.split(key, num=batch_size)
         # do training
         sampled_vec, final_logits, logits_trace, loss_trace = b_train_func(
-            batch_keys, target_rep, logits, params, iter_num)
+            batch_keys, target_rep, logits, params, iter_num
+        )
         # select topk
         pso_loss, pso_loss_trace, pso_logits, pso_seqs = pso_search(
-            sampled_vec, final_logits, loss_trace, topk=pso_topk)
+            sampled_vec, final_logits, loss_trace, topk=pso_topk
+        )
 
         # keep track of things
         pso_loss_traces.append(pso_loss_trace)
-        best_loss, best_seqs = _update_best(
-            best_loss, best_seqs, pso_loss, pso_seqs)
+        best_loss, best_seqs = _update_best(best_loss, best_seqs, pso_loss, pso_seqs)
 
         # rebuild the batches for next epoch
         # add gaussian noise
-        pertubed_logits = jnp.add(pso_logits, 0.3*jnp.mean(
-            pso_logits)*jax.random.normal(key, shape=jnp.shape(pso_logits)))
+        pertubed_logits = jnp.add(
+            pso_logits,
+            0.3
+            * jnp.mean(pso_logits)
+            * jax.random.normal(key, shape=jnp.shape(pso_logits)),
+        )
         logits = jnp.concatenate((pso_logits, pertubed_logits))
         key, _ = jax.random.split(key)  # update key in each iteration
 
