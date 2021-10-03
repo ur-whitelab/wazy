@@ -133,7 +133,8 @@ class TestMLP(unittest.TestCase):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
         forward_t, full_forward_t = alpdesign.build_model(c)
-        params, losses = alpdesign.ensemble_train(key, full_forward_t, c, reps, labels)
+        params, losses = alpdesign.ensemble_train(
+            key, full_forward_t, c, reps, labels)
         forward = functools.partial(forward_t.apply, params, None)
 
         for xi in x:
@@ -158,7 +159,11 @@ class TestMLP(unittest.TestCase):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
         forward_t, full_forward_t, seq_t = alpdesign.build_e2e(c)
-        gen = lambda k, n: jax.random.normal(key, shape=(n, 10, 20))
+        def gen(k, n): return jax.random.normal(key, shape=(n, 10, 20))
+        key1, key2 = jax.random.split(key)
+        start_params = seq_t.init(key1, jnp.tile(
+            self.reps[0], (c.model_number, 1)))
         alpdesign.alg_iter(
-            key, self.reps, self.labels, full_forward_t, seq_t, c, x0_gernerator=gen
+            key2, self.reps, self.labels, full_forward_t, seq_t, c, x0_gen=gen,
+            start_params=start_params
         )

@@ -46,7 +46,8 @@ class SingleBlock(hk.Module):
             x = hk.Linear(dim)(x)
             if idx < len(self.config.shape) - 1:
                 x = jax.nn.relu(x)
-                x = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True)(x)
+                x = hk.LayerNorm(axis=-1, create_scale=True,
+                                 create_offset=True)(x)
         return x
 
 
@@ -74,7 +75,8 @@ def _transform_var(s):
 
 def model_reduce(out):
     mu = jnp.mean(out[..., 0], axis=0)
-    var = jnp.mean(_transform_var(out[..., 1]) + out[..., 0] ** 2, axis=0) - mu ** 2
+    var = jnp.mean(_transform_var(
+        out[..., 1]) + out[..., 0] ** 2, axis=0) - mu ** 2
 
     return mu, var
 
@@ -129,7 +131,8 @@ def _shuffle_in_unison(key, a, b):
 def _fill_to_batch(x, y, key, batch_size):
     if len(y) >= batch_size:
         return x, y
-    i = jax.random.choice(key, jnp.arange(len(y)), shape=(batch_size,), replace=True)
+    i = jax.random.choice(key, jnp.arange(
+        len(y)), shape=(batch_size,), replace=True)
     x = x[i, ...]
     y = y[i, ...]
     return x, y
@@ -168,7 +171,8 @@ def ensemble_train(
             val_seqs, val_labels, bkey, aconfig.train_batch_size
         )
     if params == None:
-        params = forward_t.init(key, jnp.tile(seqs[0], (mconfig.model_number, 1)))
+        params = forward_t.init(key, jnp.tile(
+            seqs[0], (mconfig.model_number, 1)))
     opt_state = opt_init(params)
 
     # wrap loss in batch/sum
@@ -191,9 +195,10 @@ def ensemble_train(
         key, tkey = jax.random.split(key, num=2)
         shuffle_seqs, shuffle_labels = _shuffle_in_unison(key, seqs, labels)
         for i in range(0, len(shuffle_labels) // aconfig.train_batch_size):
-            seq = shuffle_seqs[i : (i + 1) * aconfig.train_batch_size]
-            label = shuffle_labels[i : (i + 1) * aconfig.train_batch_size]
-            opt_state, params, loss = train_step(opt_state, params, tkey, seq, label)
+            seq = shuffle_seqs[i: (i + 1) * aconfig.train_batch_size]
+            label = shuffle_labels[i: (i + 1) * aconfig.train_batch_size]
+            opt_state, params, loss = train_step(
+                opt_state, params, tkey, seq, label)
             losses.append(loss)
         # compute validation loss
         if val_seqs is not None:
@@ -203,8 +208,8 @@ def ensemble_train(
                 val_loss += loss_fxn(
                     params,
                     tkey,
-                    val_seqs[i : (i + 1) * aconfig.train_batch_size],
-                    val_labels[i : (i + 1) * aconfig.train_batch_size],
+                    val_seqs[i: (i + 1) * aconfig.train_batch_size],
+                    val_labels[i: (i + 1) * aconfig.train_batch_size],
                 )
             val_loss = val_loss / len(val_labels) * aconfig.train_batch_size
             # batch_loss += loss
@@ -236,7 +241,8 @@ def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None):
     def step(x, opt_state, key):
         # work with non-reduced, so we can get individual batch eis
         loss = neg_bayesian_ei(key, f, x, labels, aconfig.bo_xi)
-        g = jax.grad(reduced_neg_bayesian_ei, 2)(key, f, x, labels, aconfig.bo_xi)
+        g = jax.grad(reduced_neg_bayesian_ei, 2)(
+            key, f, x, labels, aconfig.bo_xi)
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
         return x, opt_state, loss
@@ -250,19 +256,20 @@ def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None):
     return x, losses
 
 
-def alg_iter(key, x, y, f, ff, mconfig, aconfig=None, x0_gen=None, start_params=None):
+def alg_iter(key, x, y, train_t, infer_t, mconfig, aconfig=None, x0_gen=None, start_params=None):
     if aconfig is None:
         aconfig = AlgConfig()
     tkey, xkey, bkey = jax.random.split(key, 3)
     params, train_loss = ensemble_train(
-        tkey, ff, mconfig, x, y, params=start_params, aconfig=aconfig
+        tkey, train_t, mconfig, x, y, params=start_params, aconfig=aconfig
     )
     if x0_gen is None:
-        init_x = jax.random.normal(xkey, shape=(aconfig.bo_batch_size, *x[0].shape))
+        init_x = jax.random.normal(xkey, shape=(
+            aconfig.bo_batch_size, *x[0].shape))
     else:
         init_x = x0_gen(xkey, aconfig.bo_batch_size)
     # package params, since we're no longer training
-    g = jax.vmap(partial(f.apply, params), in_axes=(None, 0))
+    g = jax.vmap(partial(infer_t.apply, params), in_axes=(None, 0))
     # do Bayes Opt and save best result only
     batched_v, bo_loss = bayes_opt(bkey, g, y, init_x, aconfig)
     top_idx = np.argmin(bo_loss[-1])
