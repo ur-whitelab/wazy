@@ -12,12 +12,12 @@ from .seq import *
 @dataclass
 class EnsembleBlockConfig:
     shape: tuple = (
-        256,
+        512,
         256,
         64,
         2,
     )
-    model_number: int = 5
+    model_number: int = 10
 
 
 @dataclass
@@ -108,7 +108,7 @@ def _adv_loss_func(forward, M, params, key, seq, label):
     # first tile sequence/labels for each model
     seq_tile = jnp.tile(seq, (M, 1))
     label_tile = jnp.tile(label, M)
-    epsilon = 1e-1
+    epsilon = 1e-3
     key1, key2 = jax.random.split(key)
     grad_inputs = jax.grad(_deep_ensemble_loss, 3)(
         params, key, forward, seq_tile, label_tile
