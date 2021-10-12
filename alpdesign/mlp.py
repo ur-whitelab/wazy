@@ -12,17 +12,17 @@ from .seq import *
 @dataclass
 class EnsembleBlockConfig:
     shape: tuple = (
-        512,
         256,
+        128,
         64,
         2,
     )
-    model_number: int = 10
+    model_number: int = 5
 
 
 @dataclass
 class AlgConfig:
-    train_epochs: int = 160
+    train_epochs: int = 200
     train_batch_size: int = 8
     train_lr: float = 1e-2
     train_adam_b1: float = 0.8
@@ -46,6 +46,7 @@ class SingleBlock(hk.Module):
             x = hk.Linear(dim)(x)
             if idx < len(self.config.shape) - 1:
                 x = jax.nn.relu(x)
+                #if idx > 0:
                 x = hk.LayerNorm(axis=-1, create_scale=True,
                                  create_offset=True)(x)
         return x
@@ -60,8 +61,8 @@ class EnsembleBlock(hk.Module):
     def __call__(self, x):
         out = jnp.array(
             [
-                # hk.nets.MLP(self.config.shape)(x[i])
-                SingleBlock(self.config)(x[i])
+                hk.nets.MLP(self.config.shape)(x[i])
+                #SingleBlock(self.config)(x[i])
                 for i in range(self.config.model_number)
             ]
         )
@@ -70,7 +71,7 @@ class EnsembleBlock(hk.Module):
 
 def _transform_var(s):
     # heuristic to make MLP output better behaved.
-    return jax.nn.softplus(s)
+    return jax.nn.softplus(s) + 1e-6
 
 
 def model_reduce(out):
@@ -82,11 +83,11 @@ def model_reduce(out):
 
 
 def build_model(config):
-    def full_model_forward(x):
+    def full_model_forward(x): # adversarial training
         e = EnsembleBlock(config)
         return e(x)
 
-    def model_forward(x):
+    def model_forward(x): # single input x
         s = jnp.tile(x, (config.model_number, 1))
         return model_reduce(full_model_forward(s))
 
@@ -96,21 +97,27 @@ def build_model(config):
     return model_forward_t, full_model_forward_t
 
 
-def _deep_ensemble_loss(params, key, forward, seqs, labels):
+def _adv_loss(params, key, forward, seqs, labels):
     out = forward(params, key, seqs)
     means = out[..., 0]
     sstds = _transform_var(out[..., 1])
-    n_log_likelihoods = jnp.log(sstds) + 0.5 * (labels - means) ** 2 / sstds
+    n_log_likelihoods = 0.5 * jnp.log(sstds) + 0.5 * (labels - means) ** 2 / sstds + 0.5 * jnp.log(2 * jnp.pi)
     return jnp.sum(n_log_likelihoods, axis=0)
 
 
-def _adv_loss_func(forward, M, params, key, seq, label):
+def _deep_ensemble_loss(params, key, forward, seqs, labels):
+    out = forward(params, key, seqs)
+    mu, var = model_reduce(out)
+    return 0.5 * jnp.log(var) + 0.5 * (labels - mu) ** 2 / var
+   
+
+def _full_loss_func(forward, M, params, key, seq, label):
     # first tile sequence/labels for each model
     seq_tile = jnp.tile(seq, (M, 1))
     label_tile = jnp.tile(label, M)
     epsilon = 1e-3
     key1, key2 = jax.random.split(key)
-    grad_inputs = jax.grad(_deep_ensemble_loss, 3)(
+    grad_inputs = jax.grad(_adv_loss, 3)(
         params, key, forward, seq_tile, label_tile
     )
     seqs_ = seq_tile + epsilon * jnp.sign(grad_inputs)
@@ -176,7 +183,7 @@ def ensemble_train(
     opt_state = opt_init(params)
 
     # wrap loss in batch/sum
-    adv_loss = partial(_adv_loss_func, forward_t.apply, mconfig.model_number)
+    adv_loss = partial(_full_loss_func, forward_t.apply, mconfig.model_number)
     loss_fxn = lambda *args: jnp.mean(
         jax.vmap(adv_loss, in_axes=(None, None, 0, 0))(*args)
     )
