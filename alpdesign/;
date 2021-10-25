@@ -61,15 +61,14 @@ class EnsembleBlock(hk.Module):
     def __call__(self, x):
         out = jnp.array(
             [
-                #hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=0.))(x[0]),
-                #hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=-0.5))(x[1]),
-                #hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=0.5))(x[2]),
-                #hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=-1.))(x[3]),
-                #hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=1.))(x[4])
+                hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=0.))(x[0]),
+                hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=-0.5))(x[1]),
+                hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=0.5))(x[2]),
+                hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=-1.))(x[3]),
+                hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=1.))(x[4])
 
                 #SingleBlock(self.config)(x[i])
-                hk.nets.MLP(self.config.shape)(x[i])
-                for i in range(self.config.model_number)
+               # for i in range(self.config.model_number)
             ]
         )
         return out
@@ -127,17 +126,15 @@ def _adv_loss_func(forward, M, params, key, seq, label):
     ) + _deep_ensemble_loss(params, key2, forward, seqs_, label_tile)
 
 
-def _hard_sampling(a, b, head_rate=0.3, tail_rate=0.3):
+def _hard_sampling(a, b, top_rate=0.3, last_rate=0.3):
     assert len(a) == len(b)
-    idx = np.argsort(b)
-    num = len(idx)
-    head_num = np.int(np.ceil(head_rate * num))
-    tail_num = np.int(num - np.ceil(tail_rate * num) - 1)
-    head_a = a[idx[:head_num]]
-    tail_a = a[idx[tail_num:]]
-    head_b = b[idx[:head_num]]
-    tail_b = b[idx[tail_num:]]
-    for i in range(np.int(5 * 0.4 * num)):
+    head_idx = np.argmax(b)
+    tail_idx = np.argmin(b)
+    head_a = a[head_idx]
+    tail_a = a[tail_idx]
+    head_b = b[head_idx]
+    tail_b = b[tail_idx]
+    for i in range(5):
         a = np.append(a, head_a, axis=0)
         a = np.append(a, tail_a, axis=0)
         b = np.append(b, head_b, axis=0)
