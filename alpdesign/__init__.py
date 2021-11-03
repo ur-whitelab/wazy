@@ -9,6 +9,8 @@ from .mlp import (
     bayes_opt,
     build_model,
     alg_iter,
+    grad_iter,
+    grad_opt,
     AlgConfig,
 )
 from .seq import SeqpropBlock

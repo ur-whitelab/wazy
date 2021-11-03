@@ -17,7 +17,7 @@ class EnsembleBlockConfig:
         64,
         2,
     )
-    model_number: int = 5
+    model_number: int = 15
 
 
 @dataclass
@@ -67,8 +67,8 @@ class EnsembleBlock(hk.Module):
                 #hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=-1.))(x[3]),
                 #hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=1.))(x[4])
 
-                #SingleBlock(self.config)(x[i])
-                hk.nets.MLP(self.config.shape)(x[i])
+                SingleBlock(self.config)(x[i])
+                #hk.nets.MLP(self.config.shape)(x[i])
                 for i in range(self.config.model_number)
             ]
         )
@@ -77,7 +77,8 @@ class EnsembleBlock(hk.Module):
 
 def _transform_var(s):
     # heuristic to make MLP output better behaved.
-    return jax.nn.softplus(s) + 1e-6
+    #return jax.nn.softplus(s) + 1e-6
+    return jax.nn.relu(s) + 1e-6
 
 
 def model_reduce(out):
@@ -132,16 +133,16 @@ def _hard_sampling(a, b, head_rate=0.3, tail_rate=0.3):
     idx = np.argsort(b)
     num = len(idx)
     head_num = np.int(np.ceil(head_rate * num))
-    tail_num = np.int(num - np.ceil(tail_rate * num) - 1)
+    #tail_num = np.int(num - np.ceil(tail_rate * num) - 1)
     head_a = a[idx[:head_num]]
-    tail_a = a[idx[tail_num:]]
+    #tail_a = a[idx[tail_num:]]
     head_b = b[idx[:head_num]]
-    tail_b = b[idx[tail_num:]]
-    for i in range(np.int(5 * 0.4 * num)):
-        a = np.append(a, head_a, axis=0)
-        a = np.append(a, tail_a, axis=0)
-        b = np.append(b, head_b, axis=0)
-        b = np.append(b, tail_b, axis=0)
+    #tail_b = b[idx[tail_num:]]
+    #for i in range(np.int(10 * 0.4 *num)):
+    a = np.append(a, np.tile(head_a, (5, 1)), axis=0)
+        #a = np.append(a, tail_a, axis=0)
+    b = np.append(b, np.tile(head_b, 5), axis=0)
+        #b = np.append(b, tail_b, axis=0)
     return a, b
 
 def _shuffle_in_unison(key, a, b):
@@ -183,8 +184,8 @@ def ensemble_train(
             eps=aconfig.train_adam_eps,
         ),
         optax.add_decayed_weights(aconfig.weight_decay),
-        #optax.scale(-aconfig.train_lr),  # minus sign -- minimizing the loss
-        optax.scale_by_schedule(optax.cosine_decay_schedule(-1e-1, 50)),
+        optax.scale(-aconfig.train_lr),  # minus sign -- minimizing the loss
+        #optax.scale_by_schedule(optax.cosine_decay_schedule(-1e-1, 50)),
      )
 
     key, bkey = jax.random.split(key)
@@ -286,6 +287,31 @@ def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None, bo_xi=1e-1):
     return x, losses
 
 
+def grad_opt(key, f, labels, init_x, aconfig: AlgConfig=None):
+    if aconfig is None:
+        aconfig = AlgConfig()
+    optimizer = optax.adam(aconfig.bo_lr)
+    opt_state = optimizer.init(init_x)
+    x = init_x
+    reduced_f = lambda *args: jnp.mean(f(*args)[0])
+
+    @jax.jit
+    def step(x, opt_state, key):
+        loss, g = jax.value_and_grad(reduced_f, 1)(key, x)
+        updates, opt_state = optimizer.update(g, opt_state)
+        x = optax.apply_updates(x, updates)
+        
+        return x, opt_state, loss
+
+    losses = []
+    for step_idx in range(aconfig.bo_epochs):
+        key, _ = jax.random.split(key, num=2)
+        x, opt_state, loss = step(x, opt_state, key)
+        losses.append(loss)
+
+    return x, losses
+
+
 def alg_iter(key, x, y, train_t, infer_t, mconfig, aconfig=None, x0_gen=None, start_params=None, bo_xi=1e-1):
     if aconfig is None:
         aconfig = AlgConfig()
@@ -306,3 +332,26 @@ def alg_iter(key, x, y, train_t, infer_t, mconfig, aconfig=None, x0_gen=None, st
     best_v = batched_v[top_idx]
     # only return bo loss of chosen sequence
     return best_v, params, train_loss, np.array(bo_loss)[..., top_idx]
+
+
+
+def grad_iter(key, x, y, train_t, infer_t, mconfig, aconfig=None, x0_gen=None, start_params=None):
+    if aconfig is None:
+        aconfig = AlgConfig()
+    tkey, xkey, bkey = jax.random.split(key, 3)
+    params, train_loss = ensemble_train(
+        tkey, train_t, mconfig, x, y, params=start_params, aconfig=aconfig
+    )
+    if x0_gen is None:
+        init_x = jax.random.normal(xkey, shape=(
+            aconfig.bo_batch_size, *x[0].shape))
+    else:
+        init_x = x0_gen(xkey, aconfig.bo_batch_size)
+    # package params, since we're no longer training
+    g = jax.vmap(partial(infer_t.apply, params), in_axes=(None, 0))
+    # do Bayes Opt and save best result only
+    batched_v, grad_loss = grad_opt(bkey, g, y, init_x, aconfig)
+    top_idx = np.argmin(grad_loss[-1])
+    best_v = batched_v[top_idx]
+    # only return bo loss of chosen sequence
+    return best_v, params, train_loss, np.array(grad_loss)[..., top_idx]

@@ -63,7 +63,7 @@ ALPHABET = [
 # https://arxiv.org/abs/2005.11275
 
 
-@jax.partial(jax.custom_jvp, nondiff_argnums=(0,))
+@partial(jax.custom_jvp, nondiff_argnums=(0,))
 def disc_ss(key, logits):
     key, sub_key = jax.random.split(key, num=2)
     sampled_onehot = jax.nn.one_hot(
