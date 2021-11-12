@@ -1,0 +1,131 @@
+Traceback (most recent call last):
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/haiku/_src/transform.py", line 73, in to_prng_sequence
+    rng = hk.PRNGSequence(rng)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/haiku/_src/base.py", line 545, in __init__
+    assert_is_prng_key(key_or_seed)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/haiku/_src/base.py", line 508, in assert_is_prng_key
+    raise ValueError(
+ValueError: Provided key did not have expected shape and/or dtype expected=(shape=(2,), dtype=uint32) or (shape=(4,), dtype=uint32) actual=(shape=(5, 1900), dtype=float32)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/zyang43/ALP-Design/paper/e2e_neat.py", line 115, in <module>
+    key, reps, labels, final_vec, params, bo_loss, mlp_loss= loop(key, reps, labels, params, i)
+  File "/home/zyang43/ALP-Design/paper/e2e_neat.py", line 61, in loop
+    best_v, params, train_loss, bo_loss = alpdesign.alg_iter(
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 321, in alg_iter
+    params, train_loss = ensemble_train(
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 233, in ensemble_train
+    opt_state, params, loss = train_step(
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/_src/traceback_util.py", line 162, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/_src/api.py", line 416, in cache_miss
+    out_flat = xla.xla_call(
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/core.py", line 1632, in bind
+    return call_bind(self, fun, *args, **params)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/core.py", line 1623, in call_bind
+    outs = primitive.process(top_trace, fun, tracers, params)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/core.py", line 1635, in process
+    return trace.process_call(self, fun, tracers, params)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/core.py", line 627, in process_call
+    return primitive.impl(f, *tracers, **params)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/interpreters/xla.py", line 581, in _xla_call_impl
+    compiled_fun = _xla_callable(fun, device, backend, name, donated_invars,
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/linear_util.py", line 263, in memoized_fun
+    ans = call(fun, *args)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/interpreters/xla.py", line 653, in _xla_callable_uncached
+    return lower_xla_callable(fun, device, backend, name, donated_invars,
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/interpreters/xla.py", line 665, in lower_xla_callable
+    jaxpr, out_avals, consts = pe.trace_to_jaxpr_final(
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/interpreters/partial_eval.py", line 1542, in trace_to_jaxpr_final
+    jaxpr, out_avals, consts = trace_to_subjaxpr_dynamic(fun, main, in_avals)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/interpreters/partial_eval.py", line 1520, in trace_to_subjaxpr_dynamic
+    ans = fun.call_wrapped(*in_tracers)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/linear_util.py", line 166, in call_wrapped
+    ans = self.f(*args, **dict(self.params, **kwargs))
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 218, in train_step
+    loss, grad = jax.value_and_grad(loss_fxn, 0)(params, key, seqs, labels)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/_src/traceback_util.py", line 162, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/_src/api.py", line 993, in value_and_grad_f
+    ans, vjp_py = _vjp(f_partial, *dyn_args, reduce_axes=reduce_axes)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/_src/api.py", line 2312, in _vjp
+    out_primal, out_vjp = ad.vjp(
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/interpreters/ad.py", line 116, in vjp
+    out_primals, pvals, jaxpr, consts = linearize(traceable, *primals)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/interpreters/ad.py", line 103, in linearize
+    jaxpr, out_pvals, consts = pe.trace_to_jaxpr(jvpfun_flat, in_pvals)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/interpreters/partial_eval.py", line 513, in trace_to_jaxpr
+    jaxpr, (out_pvals, consts, env) = fun.call_wrapped(pvals)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/linear_util.py", line 166, in call_wrapped
+    ans = self.f(*args, **dict(self.params, **kwargs))
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 213, in <lambda>
+    jax.vmap(adv_loss, in_axes=(None, None, 0, 0))(*args)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/_src/traceback_util.py", line 162, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/_src/api.py", line 1452, in batched_fun
+    out_flat = batching.batch(
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/linear_util.py", line 166, in call_wrapped
+    ans = self.f(*args, **dict(self.params, **kwargs))
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 131, in _adv_loss_func
+    grad_inputs = jax.grad(_var, 2)(params, forward, seq_tile, label_tile)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/_src/traceback_util.py", line 162, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/_src/api.py", line 918, in grad_f
+    _, g = value_and_grad_f(*args, **kwargs)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/_src/traceback_util.py", line 162, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/_src/api.py", line 993, in value_and_grad_f
+    ans, vjp_py = _vjp(f_partial, *dyn_args, reduce_axes=reduce_axes)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/_src/api.py", line 2312, in _vjp
+    out_primal, out_vjp = ad.vjp(
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/interpreters/ad.py", line 116, in vjp
+    out_primals, pvals, jaxpr, consts = linearize(traceable, *primals)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/interpreters/ad.py", line 103, in linearize
+    jaxpr, out_pvals, consts = pe.trace_to_jaxpr(jvpfun_flat, in_pvals)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/interpreters/partial_eval.py", line 513, in trace_to_jaxpr
+    jaxpr, (out_pvals, consts, env) = fun.call_wrapped(pvals)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/jax/linear_util.py", line 166, in call_wrapped
+    ans = self.f(*args, **dict(self.params, **kwargs))
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 128, in _var
+    out = forward(params, seqs, labels)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/haiku/_src/transform.py", line 127, in apply_fn
+    out, state = f.apply(params, {}, *args, **kwargs)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/haiku/_src/transform.py", line 379, in apply_fn
+    rng = to_prng_sequence(
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/haiku/_src/transform.py", line 75, in to_prng_sequence
+    raise ValueError(err_msg) from e
+jax._src.traceback_util.UnfilteredStackTrace: ValueError: Apply must be called with an RNG as the second argument, the required signature is: `apply(params, rng, *a, **k)`
+
+The stack trace below excludes JAX-internal frames.
+The preceding is the original exception that occurred, unmodified.
+
+--------------------
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/zyang43/ALP-Design/paper/e2e_neat.py", line 115, in <module>
+    key, reps, labels, final_vec, params, bo_loss, mlp_loss= loop(key, reps, labels, params, i)
+  File "/home/zyang43/ALP-Design/paper/e2e_neat.py", line 61, in loop
+    best_v, params, train_loss, bo_loss = alpdesign.alg_iter(
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 321, in alg_iter
+    params, train_loss = ensemble_train(
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 233, in ensemble_train
+    opt_state, params, loss = train_step(
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 218, in train_step
+    loss, grad = jax.value_and_grad(loss_fxn, 0)(params, key, seqs, labels)
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 213, in <lambda>
+    jax.vmap(adv_loss, in_axes=(None, None, 0, 0))(*args)
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 131, in _adv_loss_func
+    grad_inputs = jax.grad(_var, 2)(params, forward, seq_tile, label_tile)
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 128, in _var
+    out = forward(params, seqs, labels)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/haiku/_src/transform.py", line 127, in apply_fn
+    out, state = f.apply(params, {}, *args, **kwargs)
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/haiku/_src/transform.py", line 379, in apply_fn
+    rng = to_prng_sequence(
+  File "/home/zyang43/.conda/envs/prettyB/lib/python3.9/site-packages/haiku/_src/transform.py", line 75, in to_prng_sequence
+    raise ValueError(err_msg) from e
+ValueError: Apply must be called with an RNG as the second argument, the required signature is: `apply(params, rng, *a, **k)`

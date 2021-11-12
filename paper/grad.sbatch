@@ -4,7 +4,7 @@
 #SBATCH -p awhite
 #SBATCH -t 2-00:00:00
 #SBATCH --mem=100GB 
-#SBATCH -C A100
+#SBATCH -C V100
 #SBATCH --gres=gpu:1
 
 
@@ -26,4 +26,4 @@ conda activate prettyB
 ######## SIMULATION DETAILS GO HERE ##############
 #################################################
 
-python /home/zyang43/ALP-Design/paper/gradient.py
+python /home/zyang43/ALP-Design/paper/grad.py

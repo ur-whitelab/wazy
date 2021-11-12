@@ -2,7 +2,7 @@
 
 #################### Debug jobs ####################
 #SBATCH -p awhite
-#SBATCH -t 2-00:00:00
+#SBATCH -t 3-00:00:00
 #SBATCH --mem=100GB 
 #SBATCH -C A100
 #SBATCH --gres=gpu:1

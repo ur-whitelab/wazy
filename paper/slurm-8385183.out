@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/home/zyang43/ALP-Design/paper/e2e_neat.py", line 1, in <module>
+    from alpdesign.utils import *
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/__init__.py", line 6, in <module>
+    from .mlp import (
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 128
+    out = forward(params, seqs, labels))
+                                       ^
+SyntaxError: unmatched ')'

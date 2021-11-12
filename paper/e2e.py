@@ -63,10 +63,11 @@ def loop(key, reps, labels, params, idx):
         start_params=start_params, bo_xi=bo_xi
         )
     s = decode_seq(best_v)
+    #unirep_v = seq2useq(best_v)
+    #reps = np.concatenate((reps, differentiable_jax_unirep(unirep_v)))
     reps = np.concatenate((reps, get_reps([s])[0]))
-    yhat = forward_t.apply(params, key, get_reps([s])[0])
+    #yhat = forward_t.apply(params, key, get_reps([s])[0])
     y = blosum(target_seq, s)
-    #print(s, y, yhat[0], yhat[1])
     labels = np.concatenate((labels, np.array(y).reshape(1,)))
     return key, reps, labels, s, params, bo_loss, train_loss
 
@@ -79,46 +80,59 @@ with open('../10kseqs.txt') as f:
     readfile = f.readlines()
     random_seqs = f'{readfile[0]}'.split(' ')[:-1]
 
-
-for j in range(50):
-    seqs = [random.choice(random_seqs)]
-    #seqs = ['ISQLRYICEVIWF']
-    #seqs = ['ISQLRYICEVIWFQGTHPI']
-    key, _ = jax.random.split(key)
-    c = alpdesign.EnsembleBlockConfig()
-    forward_t, full_forward_t, seq_t = alpdesign.build_e2e(c)
-    #def gen(k, n): return jax.random.normal(key, shape=(n, 13, 20))
-
-    reps = get_reps(seqs)[0]
+def get_labels(seqs):
     labels = []
     for seq in seqs:
         labels.append(blosum(target_seq, seq))
     labels = np.array(labels)
+
+    return labels
+
+
+val_seqs = [random.choice(random_seqs) for i in range(10)]
+val_labels = get_labels(val_seqs)
+
+with open('result_5/val_labels/val_label.pkl', 'wb') as f:
+    pickle.dump(val_labels, f)
+
+for j in range(50):
+    seqs = [random.choice(random_seqs)]
+    key, _ = jax.random.split(key)
+    c = alpdesign.EnsembleBlockConfig()
+    forward_t, full_forward_t, seq_t, uncertainty_eval_t= alpdesign.build_e2e(c)
+    #def gen(k, n): return jax.random.normal(key, shape=(n, 13, 20))
+
+    reps = get_reps(seqs)[0]
+    labels = get_labels(seqs)
     y = []
-    yhat0 = []
-    yhat1 = []
-    #with open('./result.txt', 'w') as f:
+    yhats = []
+    yhats_val = []
+    epi_ales = []
     for i in range(50):
         #print(i)
         params = None
         key, _ = jax.random.split(key, num=2)
         key, reps, labels, final_vec, params, bo_loss, mlp_loss= loop(key, reps, labels, params, i)
-        yhat = forward_t.apply(params, key, get_reps([s])[0])
-        #f.write(tuple(yhat[0], yhat[1], blosum(target_seq, final_vec)))
-        yhat0.append(yhat[0])
-        yhat1.append(yhat[1])
+        yhat = forward_t.apply(params, key, get_reps([final_vec])[0])
+        yhat_val = forward_t.apply(params, key, get_reps(val_seqs)[0])
+        epi_ale = uncertainty_eval_t.apply(params, key, get_reps([final_vec])[0])
+        #yhat0.append(yhat[0])
+        #yhat1.append(yhat[1])
+        yhats.append(yhat)
+        yhats_val.append(yhats_val)
         y.append(blosum(target_seq, final_vec))
+        epi_ales.append(epi_ale)
 
-    #with open('result/yhat{0}.pkl'.format(j), 'wb') as f1:
-        #pickle.dump(yhat0, f1)
-
-    with open('result_norm_15/label/y{0}.pkl'.format(j), 'wb') as f1:
+    with open('result_5/labels/y_{0}.pkl'.format(j), 'wb') as f1:
         pickle.dump(y, f1)
     
-    with open('result_norm_15/predict/yhat{0}.pkl'.format(j), 'wb') as f2:
-        pickle.dump(yhat0, f2)
+    with open('result_5/yhats/yhat_{0}.pkl'.format(j), 'wb') as f2:
+        pickle.dump(yhats, f2)
+
+    with open('result_5/yhats_val/yhat_val_{0}.pkl'.format(j), 'wb') as f3:
+        pickle.dump(yhats_val, f3)
     
-    with open('result_norm_15/uncertainty/yhat_{0}.pkl'.format(j), 'wb') as f3:
-        pickle.dump(yhat1, f3)
+    with open('result_5/uncertainty/epi_ale_{0}.pkl'.format(j), 'wb') as f4:
+        pickle.dump(epi_ales, f4)
 
 

@@ -166,9 +166,9 @@ BO_batch_size = 32
 
 def loop(key, reps, labels, params, rb=None):
     key, train_key = jax.random.split(key, num=2)
-    params, mlp_loss= naive_train(key, naive_forward_t, reps, labels, params=params, epochs=160)
+    params, mlp_loss= naive_train(key, naive_forward_t, reps, labels, params=params, epochs=200)
     # make random point
-    init_logits = 0.1*jax.random.normal(key, shape=((13, 20)))
+    init_logits = jax.random.normal(key, shape=((13, 20)))
     e2e_ = lambda logits: functools.partial(e2e, params)(logits)
     e2e_t = hk.transform(e2e_)
     key, train_key = jax.random.split(key, num=2)

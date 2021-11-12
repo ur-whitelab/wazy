@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/home/zyang43/ALP-Design/paper/e2e_neat.py", line 115, in <module>
+    key, reps, labels, final_vec, params, bo_loss, mlp_loss= loop(key, reps, labels, params, i)
+  File "/home/zyang43/ALP-Design/paper/e2e_neat.py", line 61, in loop
+    best_v, params, train_loss, bo_loss = alpdesign.alg_iter(
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 315, in alg_iter
+    params, train_loss = ensemble_train(
+  File "/gpfs/fs1/home/zyang43/ALP-Design/alpdesign/mlp.py", line 205, in ensemble_train
+    adv_loss = partial(_adv_loss_func, forward_t.apply, mconfig.model_number)
+NameError: name '_adv_loss_func' is not defined

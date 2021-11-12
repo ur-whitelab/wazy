@@ -17,7 +17,7 @@ class EnsembleBlockConfig:
         64,
         2,
     )
-    model_number: int = 15
+    model_number: int = 5
 
 
 @dataclass
@@ -61,12 +61,6 @@ class EnsembleBlock(hk.Module):
     def __call__(self, x):
         out = jnp.array(
             [
-                #hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=0.))(x[0]),
-                #hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=-0.5))(x[1]),
-                #hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=0.5))(x[2]),
-                #hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=-1.))(x[3]),
-                #hk.nets.MLP(self.config.shape, b_init=hk.initializers.RandomNormal(stddev=1., mean=1.))(x[4])
-
                 SingleBlock(self.config)(x[i])
                 #hk.nets.MLP(self.config.shape)(x[i])
                 for i in range(self.config.model_number)
@@ -77,8 +71,7 @@ class EnsembleBlock(hk.Module):
 
 def _transform_var(s):
     # heuristic to make MLP output better behaved.
-    #return jax.nn.softplus(s) + 1e-6
-    return jax.nn.relu(s) + 1e-6
+    return jax.nn.softplus(s) + 1e-6
 
 
 def model_reduce(out):
@@ -89,6 +82,7 @@ def model_reduce(out):
     return mu, var
 
 
+# dump function
 def build_model(config):
     def full_model_forward(x): # adversarial training
         e = EnsembleBlock(config)
@@ -98,10 +92,18 @@ def build_model(config):
         s = jnp.tile(x, (config.model_number, 1))
         return model_reduce(full_model_forward(s))
 
+    def model_uncertainty_eval(x):
+        s = jnp.tile(x, (config.model_number, 1))
+        out = full_model_forward(s)
+        epistemic = jnp.std(out[..., 0], axis=0)
+        aleatoric = jnp.mean(out[..., 0], axis=0)
+        return epistemic, aleatoric  # for each x[i]
+
     # transform functions
     model_forward_t = hk.transform(model_forward)
     full_model_forward_t = hk.transform(full_model_forward)
-    return model_forward_t, full_model_forward_t
+    model_uncertainty_eval_t = hk.transform(model_uncertainty_eval)
+    return model_forward_t, full_model_forward_t, model_uncertainty_eval_t
 
 
 def _deep_ensemble_loss(params, key, forward, seqs, labels):
@@ -110,17 +112,23 @@ def _deep_ensemble_loss(params, key, forward, seqs, labels):
     sstds = _transform_var(out[..., 1])
     n_log_likelihoods = 0.5 * jnp.log(sstds) + 0.5 * jnp.divide((labels - means) ** 2, sstds) + 0.5 * jnp.log(2 * jnp.pi)
     return jnp.sum(n_log_likelihoods, axis=0)
-   
+
 
 def _adv_loss_func(forward, M, params, key, seq, label):
     # first tile sequence/labels for each model
     seq_tile = jnp.tile(seq, (M, 1))
     label_tile = jnp.tile(label, M)
-    epsilon = 1e-3
+    epsilon = 1e-2
     key1, key2 = jax.random.split(key)
-    grad_inputs = jax.grad(_deep_ensemble_loss, 3)(
-        params, key, forward, seq_tile, label_tile
-    )
+    #grad_inputs = jax.grad(_deep_ensemble_loss, 3)(
+    #    params, key, forward, seq_tile, label_tile
+    #)
+
+    def _var(params, forward, seqs):
+        out = forward(params, key, seqs)
+        return jnp.sum(_transform_var(out[..., 1]))
+
+    grad_inputs = jax.grad(_var, 2)(params, forward, seq_tile)
     seqs_ = seq_tile + epsilon * jnp.sign(grad_inputs)
 
     return _deep_ensemble_loss(
@@ -128,21 +136,19 @@ def _adv_loss_func(forward, M, params, key, seq, label):
     ) + _deep_ensemble_loss(params, key2, forward, seqs_, label_tile)
 
 
-def _hard_sampling(a, b, head_rate=0.3, tail_rate=0.3):
+def _hard_sampling(a, b, head_rate=0.3, tail_rate=0.2):
     assert len(a) == len(b)
     idx = np.argsort(b)
     num = len(idx)
     head_num = np.int(np.ceil(head_rate * num))
     #tail_num = np.int(num - np.ceil(tail_rate * num) - 1)
-    head_a = a[idx[:head_num]]
-    #tail_a = a[idx[tail_num:]]
-    head_b = b[idx[:head_num]]
-    #tail_b = b[idx[tail_num:]]
-    #for i in range(np.int(10 * 0.4 *num)):
-    a = np.append(a, np.tile(head_a, (5, 1)), axis=0)
-        #a = np.append(a, tail_a, axis=0)
-    b = np.append(b, np.tile(head_b, 5), axis=0)
-        #b = np.append(b, tail_b, axis=0)
+    #hard_a = [*a[idx[:head_num]], *a[idx[tail_num:]]]
+    #hard_b = [*b[idx[:head_num]], *b[idx[tail_num:]]]
+    hard_a = a[idx[:head_num]]
+    hard_b = b[idx[:head_num]]
+    a = np.append(a, np.tile(hard_a, (5, 1)), axis=0)
+    b = np.append(b, np.tile(hard_b, 5), axis=0)
+    
     return a, b
 
 def _shuffle_in_unison(key, a, b):
@@ -219,8 +225,8 @@ def ensemble_train(
     for e in range(aconfig.train_epochs // (len(labels) // aconfig.train_batch_size)):
         # shuffle seqs and labels
         key, tkey = jax.random.split(key, num=2)
-        hard_seqs, hard_labels = _hard_sampling(seqs, labels)
-        shuffle_seqs, shuffle_labels = _shuffle_in_unison(key, hard_seqs, hard_labels)
+        #hard_seqs, hard_labels = _hard_sampling(seqs, labels)
+        shuffle_seqs, shuffle_labels = _shuffle_in_unison(key, seqs, labels)
         for i in range(0, len(shuffle_labels) // aconfig.train_batch_size):
             seq = shuffle_seqs[i: (i + 1) * aconfig.train_batch_size]
             label = shuffle_labels[i: (i + 1) * aconfig.train_batch_size]
@@ -258,7 +264,8 @@ def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None, bo_xi=1e-1):
     if aconfig is None:
         aconfig = AlgConfig()
     #optimizer = optax.adam(aconfig.bo_lr)
-    optimizer = optax.adam(optax.cosine_decay_schedule(1e-1, 50))
+    #optimizer = optax.adam(optax.cosine_decay_schedule(1e-1, 50))
+    optimizer = optax.adam(optax.cosine_onecycle_schedule(500, 5e-2))
     opt_state = optimizer.init(init_x)
     x = init_x
 
@@ -267,11 +274,6 @@ def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None, bo_xi=1e-1):
 
     @jax.jit
     def step(x, opt_state, key):
-        # work with non-reduced, so we can get individual batch eis
-        #loss = neg_bayesian_ei(key, f, x, labels, aconfig.bo_xi)
-        #g = jax.grad(reduced_neg_bayesian_ei, 2)(
-        #    key, f, x, labels, aconfig.bo_xi)
-        #bo_xi = 0.5 * jnp.exp(-idx/5)
         loss = neg_bayesian_ei(key, f, x, labels, bo_xi)
         g = jax.grad(reduced_neg_bayesian_ei, 2)(key, f, x, labels, bo_xi)
         updates, opt_state = optimizer.update(g, opt_state)
@@ -300,7 +302,7 @@ def grad_opt(key, f, labels, init_x, aconfig: AlgConfig=None):
         loss, g = jax.value_and_grad(reduced_f, 1)(key, x)
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
-        
+       
         return x, opt_state, loss
 
     losses = []
@@ -312,7 +314,7 @@ def grad_opt(key, f, labels, init_x, aconfig: AlgConfig=None):
     return x, losses
 
 
-def alg_iter(key, x, y, train_t, infer_t, mconfig, aconfig=None, x0_gen=None, start_params=None, bo_xi=1e-1):
+def alg_iter(key, x, y, train_t, infer_t, mconfig, aconfig=None, x0_gen=None, start_params=None, bo_xi=1e-2):
     if aconfig is None:
         aconfig = AlgConfig()
     tkey, xkey, bkey = jax.random.split(key, 3)
@@ -355,3 +357,9 @@ def grad_iter(key, x, y, train_t, infer_t, mconfig, aconfig=None, x0_gen=None, s
     best_v = batched_v[top_idx]
     # only return bo loss of chosen sequence
     return best_v, params, train_loss, np.array(grad_loss)[..., top_idx]
+from functools import partial  # for use with vmap
+import jax
+import jax.numpy as jnp
+import haiku as hk
+import jax.scipy.stats.norm as norm
+import optax
