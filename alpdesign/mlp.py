@@ -17,12 +17,12 @@ class EnsembleBlockConfig:
         64,
         2,
     )
-    model_number: int = 1
+    model_number: int = 5
 
 
 @dataclass
 class AlgConfig:
-    train_epochs: int = 6
+    train_epochs: int = 100
     train_batch_size: int = 8
     train_lr: float = 1e-2
     train_adam_b1: float = 0.8
@@ -105,36 +105,12 @@ def model_reduce(out):
     return mu, var
 
 
-# dump function
-def build_model(config):
-    def full_model_forward(x): # adversarial training
-        e = EnsembleBlock(config)
-        return e(x)
-
-    def model_forward(x): # single input x
-        s = jnp.tile(x, (config.model_number, 1))
-        return model_reduce(full_model_forward(s))
-
-    def model_uncertainty_eval(x):
-        s = jnp.tile(x, (config.model_number, 1))
-        out = full_model_forward(s)
-        epistemic = jnp.std(out[..., 0], axis=0)
-        aleatoric = jnp.mean(out[..., 0], axis=0)
-        return epistemic, aleatoric  # for each x[i]
-
-    # transform functions
-    model_forward_t = hk.transform(model_forward)
-    full_model_forward_t = hk.transform(full_model_forward)
-    model_uncertainty_eval_t = hk.transform(model_uncertainty_eval)
-    return model_forward_t, full_model_forward_t, model_uncertainty_eval_t
-
-
 def _deep_ensemble_loss(params, key, forward, seqs, labels):
     out = forward(params, key, seqs)
     means = out[..., 0]
     sstds = _transform_var(out[..., 1])
     n_log_likelihoods = 0.5 * jnp.log(sstds) + 0.5 * jnp.divide((labels - means) ** 2, sstds) + 0.5 * jnp.log(2 * jnp.pi)
-    return jnp.sum(n_log_likelihoods, axis=0)
+    return jnp.sum(n_log_likelihoods) # sum over batch and ensembles
 
 
 def _single_loss(forward, key, params, seqs, labels):
@@ -146,8 +122,10 @@ def _single_loss(forward, key, params, seqs, labels):
 
 def _adv_loss_func(forward, M, params, key, seq, label):
     # first tile sequence/labels for each model
-    seq_tile = jnp.tile(seq, (M, 1))
-    label_tile = jnp.tile(label, M)
+    seq_preserve_dim = tuple([1 for i in range(seq.ndim)])
+    seq_tile = jnp.tile(seq, (M, *seq_preserve_dim))
+    label_preserve_dim = tuple([1 for i in range(label.ndim)])
+    label_tile = jnp.tile(label, (M, *label_preserve_dim))
     epsilon = 1e-3
     key1, key2 = jax.random.split(key)
     grad_inputs = jax.grad(_deep_ensemble_loss, 3)(
@@ -238,20 +216,23 @@ def ensemble_train(
             val_seqs, val_labels, bkey, aconfig.train_batch_size
         )
     if params == None:
+        batch_seqs = jnp.ones([aconfig.train_batch_size, seqs.shape[-1]])
         params = forward_t.init(key, jnp.tile(
-            seqs[0], (mconfig.model_number, 1)))
+            batch_seqs, (mconfig.model_number, 1, 1)))
     opt_state = opt_init(params)
 
     # wrap loss in batch/sum
+    #apply(params, key, input)
+    #forward_t_batch = jax.vmap(forward_t.apply, (None, None, 0))
     adv_loss = partial(_adv_loss_func, forward_t.apply, mconfig.model_number)
-    loss_fxn = lambda *args: jnp.mean(
-        jax.vmap(adv_loss, in_axes=(None, None, 0, 0))(*args)
-    )
+    #loss_fxn = lambda *args: jnp.mean(
+    #    jax.vmap(adv_loss, in_axes=(None, None, 0, 0))(*args)
+    #)
     print('training in progress')
 
     @jax.jit
     def train_step(opt_state, params, key, seqs, labels):
-        loss, grad = jax.value_and_grad(loss_fxn, 0)(params, key, seqs, labels)
+        loss, grad = jax.value_and_grad(adv_loss, 0)(params, key, seqs, labels)
         updates, opt_state = opt_update(grad, opt_state, params)
         params = optax.apply_updates(params, updates)
         return opt_state, params, loss
@@ -267,8 +248,8 @@ def ensemble_train(
         train_loss = 0.
         shuffle_seqs, shuffle_labels = seqs, labels
         for i in range(0, len(shuffle_labels) // aconfig.train_batch_size):
-            seq = shuffle_seqs[i: (i + 1) * aconfig.train_batch_size]
-            label = shuffle_labels[i: (i + 1) * aconfig.train_batch_size]
+            seq = shuffle_seqs[i*aconfig.train_batch_size: (i+1)*aconfig.train_batch_size]
+            label = shuffle_labels[i*aconfig.train_batch_size: (i+1)*aconfig.train_batch_size]
             opt_state, params, loss = train_step(
                 opt_state, params, tkey, seq, label)
             train_loss += loss
@@ -280,11 +261,11 @@ def ensemble_train(
             val_loss = 0.0
             for i in range(0, len(val_labels) // aconfig.train_batch_size):
                 key, tkey = jax.random.split(key, num=2)
-                val_loss += loss_fxn(
+                val_loss += adv_loss(
                     params,
                     tkey,
-                    val_seqs[i: (i + 1) * aconfig.train_batch_size],
-                    val_labels[i: (i + 1) * aconfig.train_batch_size],
+                    val_seqs[i*aconfig.train_batch_size: (i+1)*aconfig.train_batch_size],
+                    val_labels[i*aconfig.train_batch_size: (i+1)*aconfig.train_batch_size],
                 )
             val_loss = val_loss / len(val_labels) * aconfig.train_batch_size
             # batch_loss += loss
@@ -330,8 +311,8 @@ def naive_train(key, forward_t, seqs, labels, val_seqs=None, val_labels=None, pa
         shuffle_seqs, shuffle_labels = _shuffle_in_unison(key, seqs, labels)
         train_loss = 0.
         for i in range(0, len(shuffle_labels) // aconfig.train_batch_size):
-            seq = shuffle_seqs[i:(i+1) * aconfig.train_batch_size]
-            label = shuffle_labels[i:(i+1) * aconfig.train_batch_size]
+            seq = shuffle_seqs[i*aconfig.train_batch_size:(i+1) * aconfig.train_batch_size]
+            label = shuffle_labels[i*aconfig.train_batch_size:(i+1) * aconfig.train_batch_size]
             opt_state, params, loss = train_step(opt_state, params, key, seq, label)
             train_loss += loss
         train_loss /= len(shuffle_labels) // aconfig.train_batch_size
@@ -340,13 +321,13 @@ def naive_train(key, forward_t, seqs, labels, val_seqs=None, val_labels=None, pa
         if val_seqs is not None:
             val_loss = 0.
             for i in range(0, len(val_labels) // aconfig.train_batch_size):
-                seq = shuffle_seqs[i:(i+1) * aconfig.train_batch_size]
-                label = shuffle_seqs[i:(i+1) * aconfig.train_batch_size]
+                seq = shuffle_seqs[i*aconfig.train_batch_size:(i+1) * aconfig.train_batch_size]
+                label = shuffle_seqs[i*aconfig.train_batch_size:(i+1) * aconfig.train_batch_size]
                 val_loss += loss_fxn(
                     key,
                     params,
-                    val_seqs[i:(i+1) * aconfig.train_batch_size],
-                    val_labels[i:(i+1) * aconfig.train_batch_size])
+                    val_seqs[i*aconfig.train_batch_size:(i+1) * aconfig.train_batch_size],
+                    val_labels[i*aconfig.train_batch_size:(i+1) * aconfig.train_batch_size])
             val_loss = val_loss/ (len(val_labels) //  aconfig.train_batch_size)
             val_losses.append(val_loss)
     return (params, losses) if val_seqs is None else (params, losses, val_losses)
@@ -471,9 +452,3 @@ def grad_iter(key, x, y, train_t, infer_t, mconfig, aconfig=None, x0_gen=None, s
     best_v = batched_v[top_idx]
     # only return bo loss of chosen sequence
     return best_v, params, train_loss, np.array(grad_loss)[..., top_idx]
-from functools import partial  # for use with vmap
-import jax
-import jax.numpy as jnp
-import haiku as hk
-import jax.scipy.stats.norm as norm
-import optax

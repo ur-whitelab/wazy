@@ -12,7 +12,8 @@ def build_e2e(config):
         return e(x)
 
     def model_forward(x):
-        s = jnp.tile(x, (config.model_number, 1))
+        x_dim = tuple([1 for i in range(x.ndim)])
+        s = jnp.tile(x, (config.model_number, *x_dim))
         return model_reduce(full_model_forward(s))
     
     def model_uncertainty_eval(x):

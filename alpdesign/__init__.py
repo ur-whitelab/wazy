@@ -7,7 +7,6 @@ from .mlp import (
     EnsembleBlockConfig,
     ensemble_train,
     bayes_opt,
-    build_model,
     alg_iter,
     grad_iter,
     grad_opt,
