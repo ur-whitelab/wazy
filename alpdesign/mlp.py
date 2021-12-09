@@ -18,6 +18,7 @@ class EnsembleBlockConfig:
         2,
     )
     model_number: int = 5
+    dropout: float = 0.1
 
 
 @dataclass
@@ -28,7 +29,7 @@ class AlgConfig:
     train_adam_b1: float = 0.8
     train_adam_b2: float = 0.9
     train_adam_eps: float = 1e-4
-    weight_decay: float = 1e-2
+    weight_decay: float = 1e-1
     bo_epochs: int = 500
     bo_lr: float = 1e-2
     bo_xi: float = 1e-1
@@ -41,16 +42,16 @@ class SingleBlock(hk.Module):
         super().__init__(name=name)
         self.config = config
 
-    def __call__(self, x):
+    def __call__(self, x, training=False):
         key = hk.next_rng_key()
         for idx, dim in enumerate(self.config.shape):
             x = hk.Linear(dim)(x)
-            if idx == 0:
-                x = hk.dropout(key, 0.5, x)
+            if idx == 0 and training:
+                x = hk.dropout(key, self.config.dropout, x)
             if idx < len(self.config.shape) - 1:
                 x = jax.nn.relu(x)
                 # if idx > 0:
-                x = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True)(x)
+                # x = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True)(x)
         return x
 
 
@@ -60,10 +61,10 @@ class EnsembleBlock(hk.Module):
         self.config = config
 
     # x is of shape ([ensemble_num, *seqs.shape])
-    def __call__(self, x):
+    def __call__(self, x, training=False):
         out = jnp.array(
             [
-                SingleBlock(self.config)(x[i])
+                SingleBlock(self.config)(x[i], training=training)
                 # hk.nets.MLP(self.config.shape)(x[i])
                 for i in range(self.config.model_number)
             ]
@@ -114,11 +115,15 @@ def model_reduce(out):
 
 
 def _deep_ensemble_loss(params, key, forward, seqs, labels):
-    out = forward(params, key, seqs)
+    out = forward(params, key, seqs, training=True)
     means = out[..., 0]
     sstds = _transform_var(out[..., 1])
-    # n_log_likelihoods = 0.5 * jnp.log(sstds) + 0.5 * jnp.divide((labels - means) ** 2, sstds) + 0.5 * jnp.log(2 * jnp.pi)
-    n_log_likelihoods = (labels - means) ** 2
+    n_log_likelihoods = (
+        0.5 * jnp.log(sstds)
+        + 0.5 * jnp.divide((labels - means) ** 2, sstds)
+        + 0.5 * jnp.log(2 * jnp.pi)
+    )
+    # n_log_likelihoods = (labels - means) ** 2
     return jnp.sum(n_log_likelihoods)  # sum over batch and ensembles
 
 
@@ -203,7 +208,7 @@ def ensemble_train(
         optax.add_decayed_weights(aconfig.weight_decay),
         # optax.scale(-aconfig.train_lr),  # minus sign -- minimizing the loss
         # optax.scale_by_schedule(optax.cosine_decay_schedule(-1e-2., 50)),
-        optax.adam(optax.cosine_onecycle_schedule(500, 5e-1)),
+        optax.adam(optax.cosine_onecycle_schedule(500, aconfig.train_lr)),
     )
 
     key, bkey = jax.random.split(key)
@@ -231,8 +236,8 @@ def ensemble_train(
     print("training in progress")
 
     @jax.jit
-    def train_step(opt_state, params, key, seqs, labels):
-        loss, grad = jax.value_and_grad(adv_loss, 0)(params, key, seqs, labels)
+    def train_step(opt_state, params, key, seq, label):
+        loss, grad = jax.value_and_grad(adv_loss, 0)(params, key, seq, label)
         updates, opt_state = opt_update(grad, opt_state, params)
         params = optax.apply_updates(params, updates)
         return opt_state, params, loss
