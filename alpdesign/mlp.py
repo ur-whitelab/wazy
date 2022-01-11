@@ -18,7 +18,7 @@ class EnsembleBlockConfig:
         2,
     )
     model_number: int = 5
-    dropout: float = 0.1
+    dropout: float = 0.2
 
 
 @dataclass
@@ -118,12 +118,12 @@ def _deep_ensemble_loss(params, key, forward, seqs, labels):
     out = forward(params, key, seqs, training=True)
     means = out[..., 0]
     sstds = _transform_var(out[..., 1])
-    n_log_likelihoods = (
-        0.5 * jnp.log(sstds)
-        + 0.5 * jnp.divide((labels - means) ** 2, sstds)
-        + 0.5 * jnp.log(2 * jnp.pi)
-    )
-    # n_log_likelihoods = (labels - means) ** 2
+    #n_log_likelihoods = (
+    #    0.5 * jnp.log(sstds)
+    #    + 0.5 * jnp.divide((labels - means) ** 2, sstds)
+    #    + 0.5 * jnp.log(2 * jnp.pi)
+    #)
+    n_log_likelihoods = (labels - means) ** 2
     return jnp.sum(n_log_likelihoods)  # sum over batch and ensembles
 
 
@@ -200,15 +200,15 @@ def ensemble_train(
         aconfig = AlgConfig()
     opt_init, opt_update = optax.chain(
         optax.clip_by_global_norm(aconfig.global_norm),
-        # optax.scale_by_adam(
-        #    b1=aconfig.train_adam_b1,
-        #    b2=aconfig.train_adam_b2,
-        #    eps=aconfig.train_adam_eps,
-        # ),
-        optax.add_decayed_weights(aconfig.weight_decay),
-        # optax.scale(-aconfig.train_lr),  # minus sign -- minimizing the loss
+        optax.scale_by_adam(
+            b1=aconfig.train_adam_b1,
+            b2=aconfig.train_adam_b2,
+            eps=aconfig.train_adam_eps,
+         ),
+        #optax.add_decayed_weights(aconfig.weight_decay),
+         optax.scale(-aconfig.train_lr),  # minus sign -- minimizing the loss
         # optax.scale_by_schedule(optax.cosine_decay_schedule(-1e-2., 50)),
-        optax.adam(optax.cosine_onecycle_schedule(500, aconfig.train_lr)),
+        #optax.adam(optax.cosine_onecycle_schedule(500, aconfig.train_lr)),
     )
 
     key, bkey = jax.random.split(key)
