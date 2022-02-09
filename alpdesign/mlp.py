@@ -79,9 +79,9 @@ class NaiveBlock(hk.Module):
     def __call__(self, x):
         out = hk.nets.MLP(
             (
-                256,
-                128,
-                64,
+                #64,
+                32,
+                #16,
                 1,
             )
         )(x)
@@ -98,7 +98,7 @@ naive_forward_t = hk.transform(naive_forward)
 
 def _naive_loss(forward, key, params, seq, label):
     yhat = forward(params, key, seq)  # scalar
-    return (label - yhat) ** 2
+    return jnp.sqrt(jnp.sum((label - yhat) ** 2))
 
 
 def _transform_var(s):
@@ -118,12 +118,12 @@ def _deep_ensemble_loss(params, key, forward, seqs, labels):
     out = forward(params, key, seqs, training=True)
     means = out[..., 0]
     sstds = _transform_var(out[..., 1])
-    #n_log_likelihoods = (
-    #    0.5 * jnp.log(sstds)
-    #    + 0.5 * jnp.divide((labels - means) ** 2, sstds)
-    #    + 0.5 * jnp.log(2 * jnp.pi)
-    #)
-    n_log_likelihoods = (labels - means) ** 2
+    n_log_likelihoods = (
+        0.5 * jnp.log(sstds)
+        + 0.5 * jnp.divide((labels - means) ** 2, sstds)
+        + 0.5 * jnp.log(2 * jnp.pi)
+    )
+    #n_log_likelihoods = (labels - means) ** 2
     return jnp.sum(n_log_likelihoods)  # sum over batch and ensembles
 
 
@@ -302,6 +302,7 @@ def naive_train(
     if aconfig is None:
         aconfig = AlgConfig()
     opt_init, opt_update = optax.chain(
+        optax.clip_by_global_norm(aconfig.global_norm),
         optax.scale_by_adam(b1=0.8, b2=0.9, eps=1e-4),
         optax.scale(-aconfig.train_lr),  # minus sign -- minimizing the loss
     )
