@@ -54,6 +54,28 @@ class SingleBlock(hk.Module):
                 # x = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True)(x)
         return x
 
+class BiLSTM(hk.Module):
+    def __init__(self, output_size, name=None):
+        super().__init__(name=name)
+        self.output_size = output_size
+
+    def __call__(self, x): # batch size X sequence length X embedding dim
+        batch_size = x.shape[0]
+        fwd_core = hk.LSTM(16)
+        bwd_core = hk.LSTM(16)
+        x = hk.BatchApply(hk.Linear(64), num_dims=1)(x)
+        x = jax.nn.relu(x)
+        fwd_outs, fwd_state = hk.dynamic_unroll(fwd_core, x, fwd_core.initial_state(batch_size), reverse=False, time_major=False)
+        #bwd_outs, bwd_state = hk.dynamic_unroll(bwd_core, jnp.flip(x, axis=-2), bwd_core.initial_state(batch_size), time_major=False)
+        bwd_outs, bwd_state = hk.dynamic_unroll(bwd_core, x, bwd_core.initial_state(batch_size), reverse=True,  time_major=False)
+        outs = jnp.take(jnp.concatenate([fwd_outs, bwd_outs], axis=-1), -1, axis=-2)
+        outs = hk.BatchApply(hk.Linear(64), num_dims=1)(outs)
+        outs = jax.nn.relu(outs)
+        outs = hk.BatchApply(hk.Linear(16), num_dims=1)(outs)
+        outs = jax.nn.relu(outs)
+        return hk.BatchApply(hk.Linear(self.output_size), num_dims=1)(outs)
+
+
 
 class EnsembleBlock(hk.Module):
     def __init__(self, config: EnsembleBlockConfig, name=None):
@@ -64,7 +86,8 @@ class EnsembleBlock(hk.Module):
     def __call__(self, x, training=False):
         out = jnp.array(
             [
-                SingleBlock(self.config)(x[i], training=training)
+                BiLSTM(2)(x[i])
+                #SingleBlock(self.config)(x[i], training=training)
                 # hk.nets.MLP(self.config.shape)(x[i])
                 for i in range(self.config.model_number)
             ]
@@ -129,7 +152,7 @@ def _deep_ensemble_loss(params, key, forward, seqs, labels):
 
 def _adv_loss_func(forward, M, params, key, seq, label):
     # first tile sequence/labels for each model
-    seq_tile = jnp.tile(seq[jnp.newaxis], (M, 1, 1))
+    seq_tile = jnp.tile(seq[jnp.newaxis], (M, 1, 1, 1))
     label_tile = jnp.tile(label[jnp.newaxis], (M, 1))
     epsilon = 1e-3
     key1, key2 = jax.random.split(key)
@@ -221,7 +244,7 @@ def ensemble_train(
         )
     if params == None:
         batch_seqs = jnp.ones(
-            [mconfig.model_number, aconfig.train_batch_size, seqs.shape[-1]]
+            [mconfig.model_number, aconfig.train_batch_size, seqs.shape[-2], seqs.shape[-1]]
         )
         params = forward_t.init(key, batch_seqs)
     opt_state = opt_init(params)
