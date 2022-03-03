@@ -138,7 +138,7 @@ def model_reduce(out):
 
 
 def _deep_ensemble_loss(params, key, forward, seqs, labels):
-    out = forward(params, key, seqs, training=True)
+    out = forward(params, key, seqs, training=False)
     means = out[..., 0]
     sstds = _transform_var(out[..., 1])
     n_log_likelihoods = (
@@ -222,7 +222,7 @@ def ensemble_train(
     if aconfig is None:
         aconfig = AlgConfig()
     opt_init, opt_update = optax.chain(
-        optax.clip_by_global_norm(aconfig.global_norm),
+        #optax.clip_by_global_norm(aconfig.global_norm),
         optax.scale_by_adam(
             b1=aconfig.train_adam_b1,
             b2=aconfig.train_adam_b2,
@@ -264,30 +264,44 @@ def ensemble_train(
         updates, opt_state = opt_update(grad, opt_state, params)
         params = optax.apply_updates(params, updates)
         return opt_state, params, loss
-
+    
+    batch_num = len(labels) // aconfig.train_batch_size
+    batch_seqs = seqs[:batch_num*aconfig.train_batch_size].reshape(batch_num, aconfig.train_batch_size, *seqs.shape[1:])
+    batch_labels = labels[:batch_num*aconfig.train_batch_size].reshape(batch_num, aconfig.train_batch_size, *labels.shape[1:])
+    #for i in range(0, len(shuffle_labels) // aconfig.train_batch_size):
+        #seq = shuffle_seqs[
+            #i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
+        #]
+        #label = shuffle_labels[
+            #i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
+        #]
     losses = []
     val_losses = []
-    # for e in range(aconfig.train_epochs // (len(labels) // aconfig.train_batch_size)):
     for e in range(aconfig.train_epochs):
-        # shuffle seqs and labels
-        key, tkey = jax.random.split(key, num=2)
-        # hard_seqs, hard_labels = _hard_sampling(seqs, labels)
-        shuffle_seqs, shuffle_labels = _shuffle_in_unison(key, seqs, labels)
-        train_loss = 0.0
-        # shuffle_seqs, shuffle_labels = seqs, labels
-        for i in range(0, len(shuffle_labels) // aconfig.train_batch_size):
-            seq = shuffle_seqs[
-                i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
-            ]
-            label = shuffle_labels[
-                i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
-            ]
-            opt_state, params, loss = train_step(opt_state, params, tkey, seq, label)
+        print(e)
+        for b in range(batch_num):
+            # shuffle seqs and labels
+            key, tkey = jax.random.split(key, num=2)
+            # hard_seqs, hard_labels = _hard_sampling(seqs, labels)
+            #shuffle_seqs, shuffle_labels = _shuffle_in_unison(key, seqs, labels)
+            #shuffle_seqs, shuffle_labels = seqs, labels
+            train_loss = 0.0
+            # shuffle_seqs, shuffle_labels = seqs, labels
+            '''
+            for i in range(0, len(shuffle_labels) // aconfig.train_batch_size):
+                seq = shuffle_seqs[
+                    i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
+                ]
+                label = shuffle_labels[
+                    i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
+                ]
+              '''
+            opt_state, params, loss = train_step(opt_state, params, tkey, batch_seqs[b], batch_labels[b])
             train_loss += loss
-        train_loss /= len(shuffle_labels) // aconfig.train_batch_size
+        train_loss /= batch_num
         losses.append(train_loss)
-        # losses.append(loss)
-        # compute validation loss
+
+        ''' 
         if val_seqs is not None:
             val_loss = 0.0
             for i in range(0, len(val_labels) // aconfig.train_batch_size):
@@ -309,6 +323,7 @@ def ensemble_train(
             val_loss = val_loss / len(val_labels) * aconfig.train_batch_size
             # batch_loss += loss
             val_losses.append(val_loss)
+        '''
     return (params, losses) if val_seqs is None else (params, losses, val_losses)
 
 
