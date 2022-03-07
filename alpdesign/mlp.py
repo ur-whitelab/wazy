@@ -86,9 +86,9 @@ class EnsembleBlock(hk.Module):
     def __call__(self, x, training=False):
         out = jnp.array(
             [
-                BiLSTM(2)(x[i])
+                #BiLSTM(2)(x[i])
                 #SingleBlock(self.config)(x[i], training=training)
-                # hk.nets.MLP(self.config.shape)(x[i])
+                hk.nets.MLP(self.config.shape)(x[i])
                 for i in range(self.config.model_number)
             ]
         )
@@ -152,7 +152,7 @@ def _deep_ensemble_loss(params, key, forward, seqs, labels):
 
 def _adv_loss_func(forward, M, params, key, seq, label):
     # first tile sequence/labels for each model
-    seq_tile = jnp.tile(seq[jnp.newaxis], (M, 1, 1, 1))
+    seq_tile = jnp.tile(seq[jnp.newaxis], (M, 1, 1))
     label_tile = jnp.tile(label[jnp.newaxis], (M, 1))
     epsilon = 1e-3
     key1, key2 = jax.random.split(key)
@@ -278,7 +278,7 @@ def ensemble_train(
     losses = []
     val_losses = []
     for e in range(aconfig.train_epochs):
-        print(e)
+        #print(e)
         for b in range(batch_num):
             # shuffle seqs and labels
             key, tkey = jax.random.split(key, num=2)
@@ -442,15 +442,15 @@ def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None, bo_xi=1e-1):
     x = init_x
 
     # reduce it so we can take grad
-    # reduced_neg_bayesian_ei = lambda *args: jnp.mean(neg_bayesian_ei(*args))
-    reduced_neg_bayesian_ucb = lambda *args: jnp.mean(neg_bayesian_ucb(*args))
+    reduced_neg_bayesian_ei = lambda *args: jnp.mean(neg_bayesian_ei(*args))
+    #reduced_neg_bayesian_ucb = lambda *args: jnp.mean(neg_bayesian_ucb(*args))
 
     @jax.jit
     def step(x, opt_state, key):
-        # loss = neg_bayesian_ei(key, f, x, labels, bo_xi)
-        # g = jax.grad(reduced_neg_bayesian_ei, 2)(key, f, x, labels, bo_xi)
-        loss = neg_bayesian_ucb(key, f, x)
-        g = jax.grad(reduced_neg_bayesian_ucb, 2)(key, f, x)
+        loss = neg_bayesian_ei(key, f, x, labels, bo_xi)
+        g = jax.grad(reduced_neg_bayesian_ei, 2)(key, f, x, labels, bo_xi)
+        #loss = neg_bayesian_ucb(key, f, x)
+        #g = jax.grad(reduced_neg_bayesian_ucb, 2)(key, f, x)
 
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
@@ -516,10 +516,10 @@ def alg_iter(
     g = jax.vmap(partial(infer_t.apply, params), in_axes=(None, 0))
     # do Bayes Opt and save best result only
     batched_v, bo_loss = bayes_opt(bkey, g, y, init_x, aconfig, bo_xi)
-    top_idx = np.argmin(bo_loss[-1])
+    top_idx = jnp.argmin(bo_loss[-1])
     best_v = batched_v[top_idx]
     # only return bo loss of chosen sequence
-    return best_v, params, train_loss, np.array(bo_loss)[..., top_idx]
+    return best_v, params, train_loss, jnp.array(bo_loss)[..., top_idx]
 
 
 def grad_iter(

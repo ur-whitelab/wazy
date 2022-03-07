@@ -25,8 +25,8 @@ def build_e2e(config):
 
     def seq_forward(x):  # params is trained mlp params
         s = SeqpropBlock()(x)
-        #us = seq2useq(s)
-        #u = differentiable_jax_unirep(us)
+        us = seq2useq(s)
+        u = differentiable_jax_unirep(us)
         return model_forward(u)
 
     # transform functions
