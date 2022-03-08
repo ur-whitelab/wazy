@@ -49,7 +49,7 @@ class SingleBlock(hk.Module):
             if idx == 0 and training:
                 x = hk.dropout(key, self.config.dropout, x)
             if idx < len(self.config.shape) - 1:
-                x = jax.nn.relu(x)
+                x = jax.nn.gelu(x)
                 # if idx > 0:
                 # x = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True)(x)
         return x
@@ -87,8 +87,8 @@ class EnsembleBlock(hk.Module):
         out = jnp.array(
             [
                 #BiLSTM(2)(x[i])
-                #SingleBlock(self.config)(x[i], training=training)
-                hk.nets.MLP(self.config.shape)(x[i])
+                SingleBlock(self.config)(x[i], training=training)
+                #hk.nets.MLP(self.config.shape)(x[i])
                 for i in range(self.config.model_number)
             ]
         )
@@ -132,15 +132,17 @@ def _transform_var(s):
 def model_reduce(out):
     mu = jnp.mean(out[..., 0], axis=0)
     var = jnp.mean(_transform_var(out[..., 1]) + out[..., 0] ** 2, axis=0) - mu ** 2
-    # var = jnp.mean(_transform_var(
-    # out[..., 1]), axis=0) + jnp.std(out[..., 0], axis=0)
+    #var = jnp.mean(_transform_var(
+    #out[..., 1]), axis=0) + jnp.std(out[..., 0], axis=0)
     return mu, var
 
 
 def _deep_ensemble_loss(params, key, forward, seqs, labels):
-    out = forward(params, key, seqs, training=False)
+    out = forward(params, key, seqs, training=True)
+    #out = model_reduce(out)
     means = out[..., 0]
     sstds = _transform_var(out[..., 1])
+    #means, sstds = out
     n_log_likelihoods = (
         0.5 * jnp.log(sstds)
         + 0.5 * jnp.divide((labels - means) ** 2, sstds)
@@ -435,7 +437,7 @@ def neg_bayesian_ucb(key, f, x, beta=2.0):
 def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None, bo_xi=1e-1):
     if aconfig is None:
         aconfig = AlgConfig()
-    optimizer = optax.adam(-aconfig.bo_lr)
+    optimizer = optax.adam(aconfig.bo_lr)
     # optimizer = optax.adam(optax.cosine_decay_schedule(1e-1, 50))
     # optimizer = optax.adam(optax.cosine_onecycle_schedule(500, 5e-2))
     opt_state = optimizer.init(init_x)
