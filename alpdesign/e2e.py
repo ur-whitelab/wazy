@@ -7,14 +7,14 @@ import jax
 
 
 def build_e2e(config):
-    def full_model_forward(x, training=False):
+    def full_model_forward(x, training=True):
         e = EnsembleBlock(config)
         return e(x, training)
 
-    def model_forward(x):
+    def model_forward(x, training=False):
         x_dim = tuple([1 for i in range(x.ndim)])
         s = jnp.tile(x, (config.model_number, *x_dim))
-        return model_reduce(full_model_forward(s))
+        return model_reduce(full_model_forward(s, training=training))
 
     def model_uncertainty_eval(x):
         s = jnp.tile(x, (config.model_number, 1))

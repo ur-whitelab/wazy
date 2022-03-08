@@ -42,14 +42,14 @@ class SingleBlock(hk.Module):
         super().__init__(name=name)
         self.config = config
 
-    def __call__(self, x, training=False):
+    def __call__(self, x, training=True):
         key = hk.next_rng_key()
         for idx, dim in enumerate(self.config.shape):
             x = hk.Linear(dim)(x)
             if idx == 0 and training:
                 x = hk.dropout(key, self.config.dropout, x)
             if idx < len(self.config.shape) - 1:
-                x = jax.nn.gelu(x)
+                x = jax.nn.tanh(x)
                 # if idx > 0:
                 # x = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True)(x)
         return x
@@ -83,7 +83,7 @@ class EnsembleBlock(hk.Module):
         self.config = config
 
     # x is of shape ([ensemble_num, *seqs.shape])
-    def __call__(self, x, training=False):
+    def __call__(self, x, training=True):
         out = jnp.array(
             [
                 #BiLSTM(2)(x[i])
@@ -138,7 +138,7 @@ def model_reduce(out):
 
 
 def _deep_ensemble_loss(params, key, forward, seqs, labels):
-    out = forward(params, key, seqs, training=True)
+    out = forward(params, key, seqs, training=False)
     #out = model_reduce(out)
     means = out[..., 0]
     sstds = _transform_var(out[..., 1])
