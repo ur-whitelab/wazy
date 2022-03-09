@@ -11,7 +11,7 @@ def build_e2e(config):
         e = EnsembleBlock(config)
         return e(x, training)
 
-    def model_forward(x, training=False):
+    def model_forward(x, training=True):
         x_dim = tuple([1 for i in range(x.ndim)])
         s = jnp.tile(x, (config.model_number, *x_dim))
         return model_reduce(full_model_forward(s, training=training))

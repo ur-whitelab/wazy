@@ -44,10 +44,12 @@ class SingleBlock(hk.Module):
 
     def __call__(self, x, training=True):
         key = hk.next_rng_key()
+        keys = jax.random.split(key, num=self.config.model_number)
         for idx, dim in enumerate(self.config.shape):
             x = hk.Linear(dim)(x)
-            if idx == 0 and training:
-                x = hk.dropout(key, self.config.dropout, x)
+            #if idx == 0 and training:
+            if idx == 0:
+                x = hk.dropout(keys[idx], self.config.dropout, x)
             if idx < len(self.config.shape) - 1:
                 x = jax.nn.tanh(x)
                 # if idx > 0:
