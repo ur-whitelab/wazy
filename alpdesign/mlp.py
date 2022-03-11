@@ -33,7 +33,7 @@ class AlgConfig:
     bo_epochs: int = 500
     bo_lr: float = 1e-2
     bo_xi: float = 1e-1
-    bo_batch_size: int = 32
+    bo_batch_size: int = 8
     global_norm: float = 1
 
 
@@ -465,8 +465,8 @@ def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None, bo_xi=1e-1):
         key, _ = jax.random.split(key, num=2)
         x, opt_state, loss = step(x, opt_state, key)
         losses.append(loss)
-
-    return x, losses
+    scores = f(key, x)
+    return x, losses, scores
 
 
 def grad_opt(key, f, labels, init_x, aconfig: AlgConfig = None):
@@ -519,11 +519,12 @@ def alg_iter(
     # package params, since we're no longer training
     g = jax.vmap(partial(infer_t.apply, params), in_axes=(None, 0))
     # do Bayes Opt and save best result only
-    batched_v, bo_loss = bayes_opt(bkey, g, y, init_x, aconfig, bo_xi)
-    top_idx = jnp.argmin(bo_loss[-1])
+    batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, aconfig, bo_xi)
+    #top_idx = jnp.argmin(bo_loss[-1])
+    top_idx = jnp.argmax(scores[0])
     best_v = batched_v[top_idx]
     # only return bo loss of chosen sequence
-    return best_v, params, train_loss, jnp.array(bo_loss)[..., top_idx]
+    return best_v, batched_v, scores, params, train_loss, jnp.array(bo_loss)[..., top_idx]
 
 
 def grad_iter(
