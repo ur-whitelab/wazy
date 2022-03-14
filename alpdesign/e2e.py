@@ -14,7 +14,8 @@ def build_e2e(config):
     def model_forward(x, training=True):
         x_dim = tuple([1 for i in range(x.ndim)])
         s = jnp.tile(x, (config.model_number, *x_dim))
-        return model_reduce(full_model_forward(s, training=training))
+        mean, var, epi_var = model_reduce(full_model_forward(s, training=training))
+        return mean, var, epi_var
 
     def model_uncertainty_eval(x):
         s = jnp.tile(x, (config.model_number, 1))
@@ -27,7 +28,8 @@ def build_e2e(config):
         s = SeqpropBlock()(x)
         us = seq2useq(s)
         u = differentiable_jax_unirep(us)
-        return model_forward(u)
+        mean, var, epi_var = model_forward(u)
+        return mean, epi_var
 
     # transform functions
     model_forward_t = hk.transform(model_forward)

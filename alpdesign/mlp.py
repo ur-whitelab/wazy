@@ -134,9 +134,10 @@ def _transform_var(s):
 def model_reduce(out):
     mu = jnp.mean(out[..., 0], axis=0)
     var = jnp.mean(_transform_var(out[..., 1]) + out[..., 0] ** 2, axis=0) - mu ** 2
+    epi_var = jnp.std(out[..., 0], axis=0) ** 2
     #var = jnp.mean(_transform_var(
     #out[..., 1]), axis=0) + jnp.std(out[..., 0], axis=0)
-    return mu, var
+    return mu, var, epi_var
 
 
 def _deep_ensemble_loss(params, key, forward, seqs, labels):
