@@ -27,6 +27,7 @@ class AlgConfig:
     train_epochs: int = 100
     train_batch_size: int = 8
     train_resampled_data_size: int = 8
+    train_resampled_classes: int = 5
     train_lr: float = 1e-2
     train_adam_b1: float = 0.8
     train_adam_b2: float = 0.9
@@ -70,13 +71,22 @@ class BiLSTM(hk.Module):
         bwd_core = hk.LSTM(16)
         x = hk.BatchApply(hk.Linear(64), num_dims=1)(x)
         x = jax.nn.relu(x)
-        fwd_outs, fwd_state = hk.dynamic_unroll(fwd_core, x, fwd_core.initial_state(
-            batch_size), reverse=False, time_major=False)
-        #bwd_outs, bwd_state = hk.dynamic_unroll(bwd_core, jnp.flip(x, axis=-2), bwd_core.initial_state(batch_size), time_major=False)
-        bwd_outs, bwd_state = hk.dynamic_unroll(bwd_core, x, bwd_core.initial_state(
-            batch_size), reverse=True,  time_major=False)
-        outs = jnp.take(jnp.concatenate(
-            [fwd_outs, bwd_outs], axis=-1), -1, axis=-2)
+        fwd_outs, fwd_state = hk.dynamic_unroll(
+            fwd_core,
+            x,
+            fwd_core.initial_state(batch_size),
+            reverse=False,
+            time_major=False,
+        )
+        # bwd_outs, bwd_state = hk.dynamic_unroll(bwd_core, jnp.flip(x, axis=-2), bwd_core.initial_state(batch_size), time_major=False)
+        bwd_outs, bwd_state = hk.dynamic_unroll(
+            bwd_core,
+            x,
+            bwd_core.initial_state(batch_size),
+            reverse=True,
+            time_major=False,
+        )
+        outs = jnp.take(jnp.concatenate([fwd_outs, bwd_outs], axis=-1), -1, axis=-2)
         outs = hk.BatchApply(hk.Linear(64), num_dims=1)(outs)
         outs = jax.nn.relu(outs)
         outs = hk.BatchApply(hk.Linear(16), num_dims=1)(outs)
@@ -138,8 +148,7 @@ def _transform_var(s):
 
 def model_reduce(out):
     mu = jnp.mean(out[..., 0], axis=0)
-    var = jnp.mean(_transform_var(
-        out[..., 1]) + out[..., 0] ** 2, axis=0) - mu ** 2
+    var = jnp.mean(_transform_var(out[..., 1]) + out[..., 0] ** 2, axis=0) - mu ** 2
     epi_var = jnp.std(out[..., 0], axis=0) ** 2
     # var = jnp.mean(_transform_var(
     # out[..., 1]), axis=0) + jnp.std(out[..., 0], axis=0)
@@ -148,16 +157,16 @@ def model_reduce(out):
 
 def _deep_ensemble_loss(params, key, forward, seqs, labels):
     out = forward(params, key, seqs, training=True)
-    #out = model_reduce(out)
+    # out = model_reduce(out)
     means = out[..., 0]
     sstds = _transform_var(out[..., 1])
-    #means, sstds = out
+    # means, sstds = out
     n_log_likelihoods = (
         0.5 * jnp.log(sstds)
         + 0.5 * jnp.divide((labels - means) ** 2, sstds)
         + 0.5 * jnp.log(2 * jnp.pi)
     )
-    #n_log_likelihoods = (labels - means) ** 2
+    # n_log_likelihoods = (labels - means) ** 2
     return jnp.sum(n_log_likelihoods)  # sum over batch and ensembles
 
 
@@ -208,8 +217,7 @@ def _shuffle_in_unison(key, a, b):
 def _fill_to_batch(x, y, key, batch_size):
     if len(y) >= batch_size:
         return x, y
-    i = jax.random.choice(key, jnp.arange(
-        len(y)), shape=(batch_size,), replace=True)
+    i = jax.random.choice(key, jnp.arange(len(y)), shape=(batch_size,), replace=True)
     x = x[i, ...]
     y = y[i, ...]
     return x, y
@@ -236,27 +244,29 @@ def ensemble_train(
         # optax.add_decayed_weights(aconfig.weight_decay),
         optax.scale(-aconfig.train_lr),  # minus sign -- minimizing the loss
         # optax.scale_by_schedule(optax.cosine_decay_schedule(-1e-2., 50)),
-        #optax.adam(optax.cosine_onecycle_schedule(500, aconfig.train_lr)),
+        # optax.adam(optax.cosine_onecycle_schedule(500, aconfig.train_lr)),
     )
 
     # shape checks
-    if(seqs.shape[0] != labels.shape[0]):
+    if seqs.shape[0] != labels.shape[0]:
         raise ValueError("Sequence and label must have same length")
 
     key, bkey = jax.random.split(key)
 
     # want to have a whole number of batches
-    N = max(aconfig.train_resampled_data_size,
-            len(labels))
+    N = max(aconfig.train_resampled_data_size, len(labels))
     batch_num = N // aconfig.train_batch_size
     N = batch_num * aconfig.train_batch_size
 
     idx = resample(
-        labels, (N, mconfig.model_number))
+        labels, (N, mconfig.model_number), nclasses=aconfig.train_resampled_classes
+    )
     batch_seqs = seqs[idx, ...].reshape(
-        batch_num, mconfig.model_number, aconfig.train_batch_size, *seqs.shape[1:])
+        batch_num, mconfig.model_number, aconfig.train_batch_size, *seqs.shape[1:]
+    )
     batch_labels = labels[idx, ...].reshape(
-        batch_num, mconfig.model_number, aconfig.train_batch_size)
+        batch_num, mconfig.model_number, aconfig.train_batch_size
+    )
 
     if params == None:
         params = forward_t.init(key, batch_seqs[0])
@@ -266,7 +276,8 @@ def ensemble_train(
     @jax.jit
     def train_step(opt_state, params, key, seq, label):
         loss, grad = jax.value_and_grad(adv_loss, 0)(
-            params, key, seq, label, aconfig.train_adv_loss_weight)
+            params, key, seq, label, aconfig.train_adv_loss_weight
+        )
         updates, opt_state = opt_update(grad, opt_state, params)
         params = optax.apply_updates(params, updates)
         return opt_state, params, loss
@@ -277,7 +288,8 @@ def ensemble_train(
         for b in range(batch_num):
             key, tkey = jax.random.split(key, num=2)
             opt_state, params, loss = train_step(
-                opt_state, params, tkey, batch_seqs[b], batch_labels[b])
+                opt_state, params, tkey, batch_seqs[b], batch_labels[b]
+            )
             train_loss += loss
         train_loss /= batch_num
         losses.append(train_loss)
@@ -333,13 +345,12 @@ def naive_train(
         train_loss = 0.0
         for i in range(0, len(shuffle_labels) // aconfig.train_batch_size):
             seq = shuffle_seqs[
-                i * aconfig.train_batch_size: (i + 1) * aconfig.train_batch_size
+                i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
             ]
             label = shuffle_labels[
-                i * aconfig.train_batch_size: (i + 1) * aconfig.train_batch_size
+                i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
             ]
-            opt_state, params, loss = train_step(
-                opt_state, params, key, seq, label)
+            opt_state, params, loss = train_step(opt_state, params, key, seq, label)
             train_loss += loss
         train_loss /= len(shuffle_labels) // aconfig.train_batch_size
         losses.append(train_loss)
@@ -348,22 +359,22 @@ def naive_train(
             val_loss = 0.0
             for i in range(0, len(val_labels) // aconfig.train_batch_size):
                 seq = shuffle_seqs[
-                    i * aconfig.train_batch_size: (i + 1) * aconfig.train_batch_size
+                    i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
                 ]
                 label = shuffle_seqs[
-                    i * aconfig.train_batch_size: (i + 1) * aconfig.train_batch_size
+                    i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
                 ]
                 val_loss += loss_fxn(
                     key,
                     params,
                     val_seqs[
                         i
-                        * aconfig.train_batch_size: (i + 1)
+                        * aconfig.train_batch_size : (i + 1)
                         * aconfig.train_batch_size
                     ],
                     val_labels[
                         i
-                        * aconfig.train_batch_size: (i + 1)
+                        * aconfig.train_batch_size : (i + 1)
                         * aconfig.train_batch_size
                     ],
                 )
@@ -401,15 +412,14 @@ def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None):
 
     # reduce it so we can take grad
     reduced_neg_bayesian_ei = lambda *args: jnp.mean(neg_bayesian_ei(*args))
-    #reduced_neg_bayesian_ucb = lambda *args: jnp.mean(neg_bayesian_ucb(*args))
+    # reduced_neg_bayesian_ucb = lambda *args: jnp.mean(neg_bayesian_ucb(*args))
 
     @jax.jit
     def step(x, opt_state, key):
         loss = neg_bayesian_ei(key, f, x, labels, aconfig.bo_xi)
-        g = jax.grad(reduced_neg_bayesian_ei, 2)(
-            key, f, x, labels, aconfig.bo_xi)
-        #loss = neg_bayesian_ucb(key, f, x)
-        #g = jax.grad(reduced_neg_bayesian_ucb, 2)(key, f, x)
+        g = jax.grad(reduced_neg_bayesian_ei, 2)(key, f, x, labels, aconfig.bo_xi)
+        # loss = neg_bayesian_ucb(key, f, x)
+        # g = jax.grad(reduced_neg_bayesian_ucb, 2)(key, f, x)
 
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
@@ -467,20 +477,25 @@ def alg_iter(
         tkey, train_t, mconfig, x, y, params=start_params, aconfig=aconfig
     )
     if x0_gen is None:
-        init_x = jax.random.normal(xkey, shape=(
-            aconfig.bo_batch_size, *x[0].shape))
+        init_x = jax.random.normal(xkey, shape=(aconfig.bo_batch_size, *x[0].shape))
     else:
         init_x = x0_gen(xkey, aconfig.bo_batch_size)
     # package params, since we're no longer training
-    g = jax.vmap(partial(infer_t.apply, params,
-                         training=False), in_axes=(None, 0))
+    g = jax.vmap(partial(infer_t.apply, params, training=False), in_axes=(None, 0))
     # do Bayes Opt and save best result only
     batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, aconfig)
     top_idx = jnp.argmin(bo_loss[-1])
-    #top_idx = jnp.argmax(scores[0])
+    # top_idx = jnp.argmax(scores[0])
     best_v = batched_v[top_idx]
     # only return bo loss of chosen sequence
-    return best_v, batched_v, scores, params, train_loss, jnp.array(bo_loss)[..., top_idx]
+    return (
+        best_v,
+        batched_v,
+        scores,
+        params,
+        train_loss,
+        jnp.array(bo_loss)[..., top_idx],
+    )
 
 
 def grad_iter(
@@ -493,8 +508,7 @@ def grad_iter(
         tkey, train_t, mconfig, x, y, params=start_params, aconfig=aconfig
     )
     if x0_gen is None:
-        init_x = jax.random.normal(xkey, shape=(
-            aconfig.bo_batch_size, *x[0].shape))
+        init_x = jax.random.normal(xkey, shape=(aconfig.bo_batch_size, *x[0].shape))
     else:
         init_x = x0_gen(xkey, aconfig.bo_batch_size)
     # package params, since we're no longer training
