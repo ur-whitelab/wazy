@@ -19,5 +19,6 @@ from .utils import (
     seq2useq,
     decode_useq,
     differentiable_jax_unirep,
+    resample
 )
 from .e2e import build_e2e

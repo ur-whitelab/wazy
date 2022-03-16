@@ -14,21 +14,22 @@ def build_e2e(config):
     def model_forward(x, training=True):
         x_dim = tuple([1 for i in range(x.ndim)])
         s = jnp.tile(x, (config.model_number, *x_dim))
-        mean, var, epi_var = model_reduce(full_model_forward(s, training=training))
+        mean, var, epi_var = model_reduce(
+            full_model_forward(s, training=training))
         return mean, var, epi_var
 
-    def model_uncertainty_eval(x):
+    def model_uncertainty_eval(x, training=True):
         s = jnp.tile(x, (config.model_number, 1))
-        out = full_model_forward(s)
+        out = full_model_forward(s, training=training)
         epistemic = jnp.std(out[..., 0], axis=0)
         aleatoric = jnp.mean(jax.nn.softplus(out[..., 1]) + 1e-6, axis=0)
         return epistemic, aleatoric  # for each x[i]
 
-    def seq_forward(x):  # params is trained mlp params
+    def seq_forward(x, training=True):  # params is trained mlp params
         s = SeqpropBlock()(x)
         us = seq2useq(s)
         u = differentiable_jax_unirep(us)
-        mean, var, epi_var = model_forward(u)
+        mean, var, epi_var = model_forward(u, training=training)
         return mean, epi_var
 
     # transform functions
