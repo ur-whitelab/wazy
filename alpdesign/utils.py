@@ -96,16 +96,15 @@ def differentiable_jax_unirep(ohc_seq):
 
 
 def resample(y, output_shape, nclasses=10):
-    '''
+    """
     Resample the given y-vector to have a uniform classes,
     where the classes are chosen via histogramming y.
-    '''
-    if(len(y.shape) == 1):
+    """
+    if len(y.shape) == 1:
         # regression
         _, bins = np.histogram(y, bins=nclasses)
-        print(bins)
         classes = np.digitize(y, bins)
-    elif(len(y.shape) == 2):
+    elif len(y.shape) == 2:
         # classification
         classes = np.argmax(y, axis=1)
         nclasses = y.shape[1]
