@@ -2,7 +2,7 @@ from alpdesign import seq
 from operator import xor
 from alpdesign.utils import ALPHABET
 from unittest import case
-from alpdesign.mlp import bayes_opt, build_model
+from alpdesign import bayes_opt, build_e2e
 import unittest
 import alpdesign
 import numpy as np
@@ -72,6 +72,18 @@ class TestUtils(unittest.TestCase):
         us = alpdesign.seq2useq(es)
         assert s == "".join(alpdesign.decode_useq(us))
 
+    def test_resample(self):
+        y = np.random.randn(10)
+        idx = alpdesign.resample(y, 5)
+        assert idx.shape == (5,)
+
+        idx = alpdesign.resample(y, (3, 5))
+        assert idx.shape == (3, 5)
+
+        y = np.random.randn(20, 3)
+        idx = alpdesign.resample(y, (3, 10))
+        assert idx.shape == (3, 10)
+
 
 class TestMLP(unittest.TestCase):
     def setUp(self) -> None:
@@ -107,7 +119,7 @@ class TestMLP(unittest.TestCase):
     def test_mlp(self):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        reduce, forward = alpdesign.build_model(c)
+        reduce, forward = alpdesign.build_e2e(c)
         params = forward.init(key, self.reps)
         forward.apply(params, None, self.reps)
 
@@ -116,7 +128,7 @@ class TestMLP(unittest.TestCase):
     def test_train(self):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        forward_fxn, full_forward = alpdesign.build_model(c)
+        forward_fxn, full_forward = alpdesign.build_e2e(c)
         params, losses = alpdesign.ensemble_train(
             key, full_forward, c, self.reps, self.labels
         )
@@ -132,7 +144,7 @@ class TestMLP(unittest.TestCase):
         labels = np.sin(reps)
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        forward_t, full_forward_t = alpdesign.build_model(c)
+        forward_t, full_forward_t = alpdesign.build_e2e(c)
         params, losses = alpdesign.ensemble_train(
             key, full_forward_t, c, reps, labels)
         forward = functools.partial(forward_t.apply, params, None)
@@ -144,7 +156,7 @@ class TestMLP(unittest.TestCase):
     def test_bayes_opt(self):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        forward_fxn_t, full_forward_t = alpdesign.build_model(c)
+        forward_fxn_t, full_forward_t = alpdesign.build_e2e(c)
         params, losses = alpdesign.ensemble_train(
             key, full_forward_t, c, self.reps, self.labels
         )

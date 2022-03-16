@@ -93,3 +93,29 @@ def differentiable_jax_unirep(ohc_seq):
     )
     h_avg = jnp.mean(outputs, axis=1)
     return h_avg
+
+
+def resample(y, output_shape, nclasses=10):
+    '''
+    Resample the given y-vector to have a uniform classes,
+    where the classes are chosen via histogramming y.
+    '''
+    if(len(y.shape) == 1):
+        # regression
+        _, bins = np.histogram(y, bins=nclasses)
+        print(bins)
+        classes = np.digitize(y, bins)
+    elif(len(y.shape) == 2):
+        # classification
+        classes = np.argmax(y, axis=1)
+        nclasses = y.shape[1]
+    else:
+        raise ValueError("y must rank 1 or 2")
+    uc = np.unique(classes)
+    nclasses = uc.shape[0]
+    if nclasses == 1:
+        return np.random.choice(np.arange(y.shape[0]), size=output_shape)
+    idx = [np.where(classes == uc[i])[0] for i in range(nclasses)]
+    c = np.random.choice(np.arange(nclasses), size=output_shape)
+    f = np.vectorize(lambda i: np.random.choice(idx[i]))
+    return f(c)

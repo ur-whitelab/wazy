@@ -117,10 +117,11 @@ forward_seqprop = hk.transform(forward_seqprop)
 
 
 def loss_func(target_rep, sampled_vec):
-    sampled_vec_unirep = seq2useq(sampled_vec)
-    h_avg = differentiable_jax_unirep(sampled_vec_unirep)
+    #sampled_vec_unirep = seq2useq(sampled_vec)
+    #h_avg = differentiable_jax_unirep(sampled_vec_unirep)
 
     # loss = jnp.mean(((target_rep - h_avg)/target_rep)**2) # mean squared error
+    h_avg = sampled_vec.flatten()
     loss = 1 - jnp.sum(jnp.vdot(h_avg, target_rep)) / jnp.sqrt(
         jnp.sum(h_avg ** 2) * jnp.sum(target_rep ** 2)
     )  # cosine similarity
