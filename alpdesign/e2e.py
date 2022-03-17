@@ -1,3 +1,4 @@
+from alpdesign.mlp import NaiveBlock
 import haiku as hk
 from .mlp import EnsembleBlock, model_reduce
 from .seq import SeqpropBlock
@@ -38,3 +39,21 @@ def build_e2e(config):
     seq_model_t = hk.transform(seq_forward)
     model_uncertainty_eval_t = hk.transform(model_uncertainty_eval)
     return model_forward_t, full_model_forward_t, seq_model_t, model_uncertainty_eval_t
+
+
+def build_naive_e2e():
+    def naive_model_forward(x):
+        e = NaiveBlock()
+        return e(x)
+
+    def seq_forward(x):
+        s = SeqpropBlock()(x)
+        us = seq2useq(s)
+        u = differentiable_jax_unirep(us)
+        out = naive_model_forward(u)
+        return out
+
+    naive_model_forward_t = hk.transform(naive_model_forward)
+    naive_seq_t = hk.transform(seq_forward)
+    return naive_model_forward_t, naive_seq_t
+

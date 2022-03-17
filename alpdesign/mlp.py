@@ -117,28 +117,17 @@ class NaiveBlock(hk.Module):
         super().__init__(name=name)
 
     def __call__(self, x):
-        out = hk.nets.MLP(
-            (
-                # 64,
-                32,
-                # 16,
-                1,
-            )
-        )(x)
-        return out
+        x = hk.Linear(64)(x)
+        x = jax.nn.tanh(x)
+        x = hk.Linear(32)(x)
+        x = jax.nn.tanh(x)
+        x = hk.Linear(1)(x)
+        return x
 
 
-def naive_forward(x):
-    f = NaiveBlock()
-    return f(x)
-
-
-naive_forward_t = hk.transform(naive_forward)
-
-
-def _naive_loss(forward, key, params, seq, label):
-    yhat = forward(params, key, seq)  # scalar
-    return jnp.sqrt(jnp.sum((label - yhat) ** 2))
+def _naive_loss(forward, key, params, x, y):
+    yhat = forward(params, key, x)
+    return jnp.mean(jnp.square(y - yhat))
 
 
 def _transform_var(s):
@@ -150,8 +139,6 @@ def model_reduce(out):
     mu = jnp.mean(out[..., 0], axis=0)
     var = jnp.mean(_transform_var(out[..., 1]) + out[..., 0] ** 2, axis=0) - mu ** 2
     epi_var = jnp.std(out[..., 0], axis=0) ** 2
-    # var = jnp.mean(_transform_var(
-    # out[..., 1]), axis=0) + jnp.std(out[..., 0], axis=0)
     return mu, var, epi_var
 
 
@@ -186,24 +173,7 @@ def _adv_loss_func(forward, M, params, key, seq_tile, label_tile, epsilon):
     return _deep_ensemble_loss(
         params, key1, forward, seq_tile, label_tile
     ) + _deep_ensemble_loss(params, key2, forward, seqs_, label_tile)
-    # return _single_loss(params, key1, forward, seq_tile, label_tile
-    #    ) + _single_loss(params, key2, forward, seqs_, label_tile)
-
-
-def _hard_sampling(a, b, head_rate=0.3, tail_rate=0.2):
-    assert len(a) == len(b)
-    idx = np.argsort(b)
-    num = len(idx)
-    head_num = np.int(np.ceil(head_rate * num))
-    # tail_num = np.int(num - np.ceil(tail_rate * num) - 1)
-    # hard_a = [*a[idx[:head_num]], *a[idx[tail_num:]]]
-    # hard_b = [*b[idx[:head_num]], *b[idx[tail_num:]]]
-    hard_a = a[idx[:head_num]]
-    hard_b = b[idx[:head_num]]
-    a = np.append(a, np.tile(hard_a, (5, 1)), axis=0)
-    b = np.append(b, np.tile(hard_b, 5), axis=0)
-
-    return a, b
+    
 
 
 def _shuffle_in_unison(key, a, b):
@@ -301,32 +271,17 @@ def naive_train(
     forward_t,
     seqs,
     labels,
-    val_seqs=None,
-    val_labels=None,
-    params=None,
-    aconfig: AlgConfig = None,
+    params=None
 ):
-    if aconfig is None:
-        aconfig = AlgConfig()
-    opt_init, opt_update = optax.chain(
-        optax.clip_by_global_norm(aconfig.global_norm),
-        optax.scale_by_adam(b1=0.8, b2=0.9, eps=1e-4),
-        optax.scale(-aconfig.train_lr),  # minus sign -- minimizing the loss
-    )
-
+    opt_init, opt_update = optax.adam(learning_rate=1e-3)
     key, bkey = jax.random.split(key)
-    # fill in seqs/labels if too small
-    seqs, labels = _fill_to_batch(seqs, labels, bkey, aconfig.train_batch_size)
+
 
     if params == None:
-        batch_seqs = jnp.ones([aconfig.train_batch_size, seqs.shape[-1]])
-        params = forward_t.init(key, batch_seqs)
-
+        params = forward_t.init(key, seqs[0])
     opt_state = opt_init(params)
-    # wrap loss in batch/sum
-    loss_ = partial(_naive_loss, forward_t.apply)
-    # loss_fxn = lambda *args: jnp.mean(jax.vmap(loss_, in_axes=(None, None, 0, 0))(*args))
-    loss_fxn = lambda *args: jnp.sum(loss_(*args))
+    
+    loss_fxn = partial(_naive_loss, forward_t.apply)
 
     @jax.jit
     def train_step(opt_state, params, key, seqs, labels):
@@ -335,52 +290,15 @@ def naive_train(
         params = optax.apply_updates(params, updates)
         return opt_state, params, loss
 
-    losses = []
-    val_losses = []
+    train_loss = 0.0
+    for e in range(100):
+        for dx, dy in zip(seqs, labels):
+          key, key_ = jax.random.split(key, num=2)
+          opt_state, params, loss = train_step(opt_state, params, key, dx, dy)
+          #print(loss)
+          train_loss += loss
 
-    for e in range(aconfig.train_epochs):
-        # shuffle seqs and labels
-        key, key_ = jax.random.split(key, num=2)
-        shuffle_seqs, shuffle_labels = _shuffle_in_unison(key, seqs, labels)
-        train_loss = 0.0
-        for i in range(0, len(shuffle_labels) // aconfig.train_batch_size):
-            seq = shuffle_seqs[
-                i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
-            ]
-            label = shuffle_labels[
-                i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
-            ]
-            opt_state, params, loss = train_step(opt_state, params, key, seq, label)
-            train_loss += loss
-        train_loss /= len(shuffle_labels) // aconfig.train_batch_size
-        losses.append(train_loss)
-        # compute validation loss
-        if val_seqs is not None:
-            val_loss = 0.0
-            for i in range(0, len(val_labels) // aconfig.train_batch_size):
-                seq = shuffle_seqs[
-                    i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
-                ]
-                label = shuffle_seqs[
-                    i * aconfig.train_batch_size : (i + 1) * aconfig.train_batch_size
-                ]
-                val_loss += loss_fxn(
-                    key,
-                    params,
-                    val_seqs[
-                        i
-                        * aconfig.train_batch_size : (i + 1)
-                        * aconfig.train_batch_size
-                    ],
-                    val_labels[
-                        i
-                        * aconfig.train_batch_size : (i + 1)
-                        * aconfig.train_batch_size
-                    ],
-                )
-            val_loss = val_loss / (len(val_labels) // aconfig.train_batch_size)
-            val_losses.append(val_loss)
-    return (params, losses) if val_seqs is None else (params, losses, val_losses)
+    return params, loss
 
 
 def neg_bayesian_ei(key, f, x, Y, xi):
@@ -434,24 +352,21 @@ def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None):
     return x, losses, scores
 
 
-def grad_opt(key, f, labels, init_x, aconfig: AlgConfig = None):
-    if aconfig is None:
-        aconfig = AlgConfig()
-    optimizer = optax.adam(aconfig.bo_lr)
+def grad_opt(key, f, labels, init_x):
+    optimizer = optax.adam(learning_rate=1e-2)
     opt_state = optimizer.init(init_x)
     x = init_x
-    reduced_f = lambda *args: jnp.mean(f(*args)[0])
 
     @jax.jit
     def step(x, opt_state, key):
-        loss, g = jax.value_and_grad(reduced_f, 1)(key, x)
+        loss, g = jax.value_and_grad(f, 1)(key, params ,x)
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
 
         return x, opt_state, loss
 
     losses = []
-    for step_idx in range(aconfig.bo_epochs):
+    for step_idx in range(100):
         key, _ = jax.random.split(key, num=2)
         x, opt_state, loss = step(x, opt_state, key)
         losses.append(loss)
@@ -504,8 +419,8 @@ def grad_iter(
     if aconfig is None:
         aconfig = AlgConfig()
     tkey, xkey, bkey = jax.random.split(key, 3)
-    params, train_loss = ensemble_train(
-        tkey, train_t, mconfig, x, y, params=start_params, aconfig=aconfig
+    params, train_loss = naive_train(
+        key, train_t, x, y, params=None,
     )
     if x0_gen is None:
         init_x = jax.random.normal(xkey, shape=(aconfig.bo_batch_size, *x[0].shape))
