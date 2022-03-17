@@ -273,7 +273,7 @@ def naive_train(
     labels,
     params=None
 ):
-    opt_init, opt_update = optax.adam(learning_rate=1e-3)
+    opt_init, opt_update = optax.adam(learning_rate=1e-4)
     key, bkey = jax.random.split(key)
 
 
@@ -359,7 +359,7 @@ def grad_opt(key, f, labels, init_x):
 
     @jax.jit
     def step(x, opt_state, key):
-        loss, g = jax.value_and_grad(f, 1)(key, params ,x)
+        loss, g = jax.value_and_grad(f, 1)(key, x)
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
 
@@ -414,23 +414,22 @@ def alg_iter(
 
 
 def grad_iter(
-    key, x, y, train_t, infer_t, mconfig, aconfig=None, x0_gen=None, start_params=None
+    key, x, y, train_t, infer_t, mconfig, x0_gen=None, start_params=None
 ):
-    if aconfig is None:
-        aconfig = AlgConfig()
     tkey, xkey, bkey = jax.random.split(key, 3)
     params, train_loss = naive_train(
         key, train_t, x, y, params=None,
     )
     if x0_gen is None:
-        init_x = jax.random.normal(xkey, shape=(aconfig.bo_batch_size, *x[0].shape))
+        init_x = jax.random.normal(xkey, shape=(8, *x[0].shape))
     else:
-        init_x = x0_gen(xkey, aconfig.bo_batch_size)
+        init_x = x0_gen(xkey, 8)
     # package params, since we're no longer training
-    g = jax.vmap(partial(infer_t.apply, params), in_axes=(None, 0))
+    #g = jax.vmap(partial(infer_t.apply, params), in_axes=(None, 0))
+    g = partial(infer_t.apply, params)
     # do Bayes Opt and save best result only
-    batched_v, grad_loss = grad_opt(bkey, g, y, init_x, aconfig)
-    top_idx = np.argmin(grad_loss[-1])
+    batched_v, grad_loss = grad_opt(bkey, g, y, init_x)
+    top_idx = jnp.argmin(grad_loss[-1])
     best_v = batched_v[top_idx]
     # only return bo loss of chosen sequence
-    return best_v, params, train_loss, np.array(grad_loss)[..., top_idx]
+    return best_v, params, train_loss, jnp.array(grad_loss)[..., top_idx]
