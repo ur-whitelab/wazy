@@ -87,7 +87,7 @@ def disc_ss_jvp(key, primals, tangents):
 
 def norm_layer(logits, r, b):
     epsilon = 1e-5
-    M, N = jnp.shape(logits)
+    M, N = jnp.shape(logits)[-2:]
     miu = jnp.sum(logits) / (M * N)
     std = jnp.sqrt(jnp.sum((logits - miu) ** 2) / (M * N))
     norm_logits = (logits - miu) / (std ** 2 + epsilon)

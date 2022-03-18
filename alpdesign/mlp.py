@@ -1,4 +1,5 @@
-from functools import partial  # for use with vmap
+from functools import partial
+from alpdesign.seq import SeqpropBlock  # for use with vmap
 import jax
 import jax.numpy as jnp
 import haiku as hk
@@ -301,8 +302,10 @@ def naive_train(
     return params, loss
 
 
-def neg_bayesian_ei(key, f, x, Y, xi):
-    joint_out = f(key, x)
+def neg_bayesian_ei(key, f, x, Y, nn_params, rb_params, xi):
+    entire_params = hk.data_structures.merge(nn_params, rb_params)
+    batch_f = jax.vmap(f, in_axes=(None, None, 0))
+    joint_out = batch_f(entire_params, key, x)
     mu = joint_out[0]
     std = jnp.sqrt(joint_out[1])
     best = jnp.max(Y)
@@ -319,37 +322,37 @@ def neg_bayesian_ucb(key, f, x, beta=2.0):
     return ucb
 
 
-def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None):
+def bayes_opt(key, infer_t, labels, init_logits, nn_params, aconfig: AlgConfig = None):
+    # infer_t(params, key, x)
     if aconfig is None:
         aconfig = AlgConfig()
+    
+    init_rb_params = infer_t.init(key, init_logits)
     optimizer = optax.adam(aconfig.bo_lr)
-    # optimizer = optax.adam(optax.cosine_decay_schedule(1e-1, 50))
-    # optimizer = optax.adam(optax.cosine_onecycle_schedule(500, 5e-2))
-    opt_state = optimizer.init(init_x)
-    x = init_x
+    opt_state = optimizer.init(init_logits, init_rb_params)
+    x = init_logits
+    rb_params = init_rb_params
+    logits_rb = (x, rb_params)
 
     # reduce it so we can take grad
     reduced_neg_bayesian_ei = lambda *args: jnp.mean(neg_bayesian_ei(*args))
     # reduced_neg_bayesian_ucb = lambda *args: jnp.mean(neg_bayesian_ucb(*args))
 
     @jax.jit
-    def step(x, opt_state, key):
-        loss = neg_bayesian_ei(key, f, x, labels, aconfig.bo_xi)
-        g = jax.grad(reduced_neg_bayesian_ei, 2)(key, f, x, labels, aconfig.bo_xi)
-        # loss = neg_bayesian_ucb(key, f, x)
-        # g = jax.grad(reduced_neg_bayesian_ucb, 2)(key, f, x)
-
+    def step(logits_rb, opt_state, key):
+        loss = neg_bayesian_ei(key, infer_t.apply, x, labels, nn_params, rb_params, aconfig.bo_xi)
+        g = jax.grad(reduced_neg_bayesian_ei, (2, 5))(key, infer_t.apply, x, labels, nn_params, rb_params, aconfig.bo_xi)
         updates, opt_state = optimizer.update(g, opt_state)
-        x = optax.apply_updates(x, updates)
-        return x, opt_state, loss
+        logits_rb = optax.apply_updates(x, updates)
+        return logits_rb, opt_state, loss
 
     losses = []
     for step_idx in range(aconfig.bo_epochs):
         key, _ = jax.random.split(key, num=2)
-        x, opt_state, loss = step(x, opt_state, key)
+        logits_rb, opt_state, loss = step(logits_rb, opt_state, key)
         losses.append(loss)
-    scores = f(key, x)
-    return x, losses, scores
+    #scores = infer_t(key, x)
+    return x, losses
 
 
 def grad_opt(key, f, labels, init_x):
@@ -359,7 +362,7 @@ def grad_opt(key, f, labels, init_x):
 
     @jax.jit
     def step(x, opt_state, key):
-        loss, g = jax.value_and_grad(f, 1)(key, x)
+        loss, g = jax.value_and_grad(f, 2)(params, key, x)
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
 
@@ -388,7 +391,7 @@ def alg_iter(
     if aconfig is None:
         aconfig = AlgConfig()
     tkey, xkey, bkey = jax.random.split(key, 3)
-    params, train_loss = ensemble_train(
+    nn_params, train_loss = ensemble_train(
         tkey, train_t, mconfig, x, y, params=start_params, aconfig=aconfig
     )
     if x0_gen is None:
@@ -396,18 +399,17 @@ def alg_iter(
     else:
         init_x = x0_gen(xkey, aconfig.bo_batch_size)
     # package params, since we're no longer training
-    g = jax.vmap(partial(infer_t.apply, params, training=False), in_axes=(None, 0))
-    # do Bayes Opt and save best result only
-    batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, aconfig)
+    #g = jax.vmap(partial(infer_t.apply, params, training=False), in_axes=(None, 0))
+    #g = jax.vmap(infer_t.apply, in_axes=(None, None, 0))
+    batched_v, bo_loss, scores = bayes_opt(bkey, infer_t, y, init_x, nn_params, aconfig)
     top_idx = jnp.argmin(bo_loss[-1])
-    # top_idx = jnp.argmax(scores[0])
     best_v = batched_v[top_idx]
     # only return bo loss of chosen sequence
     return (
         best_v,
         batched_v,
         scores,
-        params,
+        nn_params,
         train_loss,
         jnp.array(bo_loss)[..., top_idx],
     )
