@@ -1,8 +1,8 @@
+from dataclasses import astuple
 from alpdesign import seq
 from operator import xor
 from alpdesign.utils import ALPHABET
 from unittest import case
-from alpdesign import bayes_opt, build_e2e
 import unittest
 import alpdesign
 import numpy as np
@@ -34,31 +34,6 @@ class TestSeq(unittest.TestCase):
         g = jax.grad(loss)(x)
         assert np.sum(g ** 2) > 0
 
-    def test_lossfunc(self):
-        seq = ["A", "A", "A", "A"]
-        target = "AAAA"
-        vec = alpdesign.utils.encode_seq(seq)
-        target_rep = jax_unirep.get_reps(target)[0]
-        assert alpdesign.seq.loss_func(target_rep, vec) < 1e-5
-
-    def test_train(self):
-        seq = ["A", "A", "A", "A"]
-        target = "SSSS"
-        vec = alpdesign.utils.encode_seq(seq)
-        key = jax.random.PRNGKey(37)
-        key, logits_key = jax.random.split(key, num=2)
-        # batch_size = 2
-        init_logits = jax.random.normal(logits_key, shape=jnp.shape(vec))
-        # init_logits = jax.random.normal(logits_key, shape=(batch_size,*jnp.shape(vec)))
-        init_params = alpdesign.seq.forward_seqprop.init(key, init_logits)
-        target_rep = jax_unirep.get_reps(target)[0]
-        (
-            sampled_vec,
-            final_logits,
-            logits_trace,
-            loss_trace,
-        ) = alpdesign.seq.train_seqprop(key, target_rep, init_logits, init_params)
-
 
 class TestUtils(unittest.TestCase):
     def test_encoding(self):
@@ -87,7 +62,7 @@ class TestUtils(unittest.TestCase):
 
 class TestMLP(unittest.TestCase):
     def setUp(self) -> None:
-        seqs = [
+        self.seqs = [
             "MSAD",
             "EKMHI",
             "HSFHK",
@@ -114,23 +89,45 @@ class TestMLP(unittest.TestCase):
                 26.521739130434781,
             ]
         )
-        self.reps = jax_unirep.get_reps(seqs)[0]
+        self.reps = jax_unirep.get_reps(self.seqs)[0]
 
     def test_mlp(self):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        reduce, forward = alpdesign.build_e2e(c)
-        params = forward.init(key, self.reps)
-        forward.apply(params, None, self.reps)
+        model = alpdesign.EnsembleModel(c)
+        params = model.train_t.init(key, self.reps)
 
-        reduce.apply(params, None, self.reps)
+        model.train_t.apply(params, key, self.reps)
+        model.infer_t.apply(params, key, self.reps)
+        model.var_t.apply(params, key, self.reps)
+
+        s = jax.random.normal(key, shape=(
+            10, 20))
+        sparams = model.seq_t.init(key, s)
+        model.seq_t.apply(sparams, key, s)
+
+    def test_seq_grad(self):
+        s = np.random.randn(10, 20)
+        key = jax.random.PRNGKey(0)
+        c = alpdesign.EnsembleBlockConfig()
+        model = alpdesign.EnsembleModel(c)
+        p = model.seq_t.init(key, s)
+        sp = model.seq_partition(p)
+        model.seq_apply(p, key, (s, sp))
+
+        # check gradient
+        @jax.jit
+        def loss(x):
+            return jnp.sum(model.seq_apply(p, key, (x, sp))[0])
+        g = jax.grad(loss)(s)
+        jax.tree_util.tree_reduce(lambda s, x: s + jnp.sum(x**2), g, 0) > 0
 
     def test_train(self):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        forward_fxn, full_forward = alpdesign.build_e2e(c)
+        model = alpdesign.EnsembleModel(c)
         params, losses = alpdesign.ensemble_train(
-            key, full_forward, c, self.reps, self.labels
+            key, model.train_t, c, self.reps, self.labels
         )
 
     def test_sine_train(self):
@@ -144,38 +141,65 @@ class TestMLP(unittest.TestCase):
         labels = np.sin(reps)
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        forward_t, full_forward_t = alpdesign.build_e2e(c)
+        model = alpdesign.EnsembleModel(c)
         params, losses = alpdesign.ensemble_train(
-            key, full_forward_t, c, reps, labels)
-        forward = functools.partial(forward_t.apply, params, None)
+            key, model.train_t, c, reps, labels)
+        forward = functools.partial(model.infer_t.apply, params, key)
 
         for xi in x:
             v = forward(xi[np.newaxis])
             assert (v[0] - np.sin(xi)) ** 2 < (2 * v[1]) ** 2
 
+    def test_bayes_seq_opt(self):
+        key = jax.random.PRNGKey(0)
+        c = alpdesign.EnsembleBlockConfig()
+        model = alpdesign.EnsembleModel(c)
+        params, losses = alpdesign.ensemble_train(
+            key, model.train_t, c, self.reps, self.labels
+        )
+
+        slength = 10
+        s = jax.random.normal(key, shape=(slength, 20))
+        sparams = model.seq_t.init(key, s)
+        x0 = model.random_seqs(key, 4, sparams, 8)
+        g = jax.vmap(functools.partial(
+            model.seq_apply, params), in_axes=(None, 0))
+        out = alpdesign.bayes_opt(
+            key, g, self.labels, init_x=x0)
+
     def test_bayes_opt(self):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        forward_fxn_t, full_forward_t = alpdesign.build_e2e(c)
+        model = alpdesign.EnsembleModel(c)
         params, losses = alpdesign.ensemble_train(
-            key, full_forward_t, c, self.reps, self.labels
+            key, model.train_t, c, self.reps, self.labels
         )
 
-        forward = functools.partial(forward_fxn_t.apply, params)
+        forward = functools.partial(model.infer_t.apply, params)
 
         init_x = jax.random.normal(key, shape=(1, 1900))
         out = alpdesign.bayes_opt(key, forward, self.labels, init_x)
         # assert jnp.squeeze(final_vec).shape == (1900,)
 
-    def test_e2e(self):
+    def test_alg_iter(self):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
-        forward_t, full_forward_t, seq_t = alpdesign.build_e2e(c)
-        def gen(k, n): return jax.random.normal(key, shape=(n, 10, 20))
-        key1, key2 = jax.random.split(key)
-        start_params = seq_t.init(key1, jnp.tile(
-            jnp.squeeze(gen(key2, 1)), (c.model_number, 1)))
+        model = alpdesign.EnsembleModel(c)
         alpdesign.alg_iter(
-            key2, self.reps, self.labels, full_forward_t, seq_t, c, x0_gen=gen,
-            start_params=start_params
+            key, self.reps, self.labels, model.train_t, model.infer_t, c
+        )
+
+    def test_alg_iter_seq(self):
+        key = jax.random.PRNGKey(0)
+        c = alpdesign.EnsembleBlockConfig()
+        model = alpdesign.EnsembleModel(c)
+        L = 10
+        s = jax.random.normal(key, shape=(L, 20))
+        sparams = model.seq_t.init(key, s)
+        key1, key2 = jax.random.split(key)
+
+        def x0_gen(key, batch_size): return model.random_seqs(
+            key1, batch_size, sparams, L)
+        alpdesign.alg_iter(
+            key2, self.reps, self.labels, model.train_t, model.seq_apply, c, x0_gen=x0_gen
         )

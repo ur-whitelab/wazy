@@ -1,4 +1,5 @@
 from functools import partial
+from typing import Callable
 from alpdesign.seq import SeqpropBlock  # for use with vmap
 import jax
 import jax.numpy as jnp
@@ -25,7 +26,7 @@ class EnsembleBlockConfig:
 
 @dataclass
 class AlgConfig:
-    train_epochs: int = 100
+    train_epochs: int = 10
     train_batch_size: int = 8
     train_resampled_data_size: int = 8
     train_resampled_classes: int = 5
@@ -35,7 +36,7 @@ class AlgConfig:
     train_adam_eps: float = 1e-4
     train_adv_loss_weight: float = 1e-3
     weight_decay: float = 1e-1
-    bo_epochs: int = 500
+    bo_epochs: int = 50
     bo_lr: float = 1e-2
     bo_xi: float = 1e-1
     bo_batch_size: int = 8
@@ -47,7 +48,7 @@ class SingleBlock(hk.Module):
         super().__init__(name=name)
         self.config = config
 
-    def __call__(self, x, training=True):
+    def __call__(self, x, training):
         key = hk.next_rng_key()
         keys = jax.random.split(key, num=self.config.model_number)
         for idx, dim in enumerate(self.config.shape):
@@ -87,7 +88,8 @@ class BiLSTM(hk.Module):
             reverse=True,
             time_major=False,
         )
-        outs = jnp.take(jnp.concatenate([fwd_outs, bwd_outs], axis=-1), -1, axis=-2)
+        outs = jnp.take(jnp.concatenate(
+            [fwd_outs, bwd_outs], axis=-1), -1, axis=-2)
         outs = hk.BatchApply(hk.Linear(64), num_dims=1)(outs)
         outs = jax.nn.relu(outs)
         outs = hk.BatchApply(hk.Linear(16), num_dims=1)(outs)
@@ -101,7 +103,7 @@ class EnsembleBlock(hk.Module):
         self.config = config
 
     # x is of shape ([ensemble_num, *seqs.shape])
-    def __call__(self, x, training=True):
+    def __call__(self, x, training):
         out = jnp.array(
             [
                 # BiLSTM(2)(x[i])
@@ -131,23 +133,10 @@ def _naive_loss(forward, key, params, x, y):
     return jnp.mean(jnp.square(y - yhat))
 
 
-def _transform_var(s):
-    # heuristic to make MLP output better behaved.
-    return jax.nn.softplus(s) + 1e-6
-
-
-def model_reduce(out):
-    mu = jnp.mean(out[..., 0], axis=0)
-    var = jnp.mean(_transform_var(out[..., 1]) + out[..., 0] ** 2, axis=0) - mu ** 2
-    epi_var = jnp.std(out[..., 0], axis=0) ** 2
-    return mu, var, epi_var
-
-
 def _deep_ensemble_loss(params, key, forward, seqs, labels):
-    out = forward(params, key, seqs, training=True)
-    # out = model_reduce(out)
+    out = forward(params, key, seqs)
     means = out[..., 0]
-    sstds = _transform_var(out[..., 1])
+    sstds = transform_var(out[..., 1])
     # means, sstds = out
     n_log_likelihoods = (
         0.5 * jnp.log(sstds)
@@ -168,13 +157,12 @@ def _adv_loss_func(forward, M, params, key, seq_tile, label_tile, epsilon):
 
     def _var(params, forward, seqs):
         out = forward(params, key, seqs)
-        return jnp.sum(_transform_var(out[..., 1]))
+        return jnp.sum(transform_var(out[..., 1]))
 
     seqs_ = seq_tile + epsilon * jnp.sign(grad_inputs)
     return _deep_ensemble_loss(
         params, key1, forward, seq_tile, label_tile
     ) + _deep_ensemble_loss(params, key2, forward, seqs_, label_tile)
-    
 
 
 def _shuffle_in_unison(key, a, b):
@@ -188,7 +176,8 @@ def _shuffle_in_unison(key, a, b):
 def _fill_to_batch(x, y, key, batch_size):
     if len(y) >= batch_size:
         return x, y
-    i = jax.random.choice(key, jnp.arange(len(y)), shape=(batch_size,), replace=True)
+    i = jax.random.choice(key, jnp.arange(
+        len(y)), shape=(batch_size,), replace=True)
     x = x[i, ...]
     y = y[i, ...]
     return x, y
@@ -233,7 +222,8 @@ def ensemble_train(
         labels, (N, mconfig.model_number), nclasses=aconfig.train_resampled_classes
     )
     batch_seqs = seqs[idx, ...].reshape(
-        batch_num, mconfig.model_number, aconfig.train_batch_size, *seqs.shape[1:]
+        batch_num, mconfig.model_number, aconfig.train_batch_size, *
+        seqs.shape[1:]
     )
     batch_labels = labels[idx, ...].reshape(
         batch_num, mconfig.model_number, aconfig.train_batch_size
@@ -277,11 +267,10 @@ def naive_train(
     opt_init, opt_update = optax.adam(learning_rate=1e-4)
     key, bkey = jax.random.split(key)
 
-
     if params == None:
         params = forward_t.init(key, seqs[0])
     opt_state = opt_init(params)
-    
+
     loss_fxn = partial(_naive_loss, forward_t.apply)
 
     @jax.jit
@@ -294,18 +283,17 @@ def naive_train(
     train_loss = 0.0
     for e in range(100):
         for dx, dy in zip(seqs, labels):
-          key, key_ = jax.random.split(key, num=2)
-          opt_state, params, loss = train_step(opt_state, params, key, dx, dy)
-          #print(loss)
-          train_loss += loss
+            key, key_ = jax.random.split(key, num=2)
+            opt_state, params, loss = train_step(
+                opt_state, params, key, dx, dy)
+            # print(loss)
+            train_loss += loss
 
     return params, loss
 
 
-def neg_bayesian_ei(key, f, x, Y, nn_params, rb_params, xi):
-    entire_params = hk.data_structures.merge(nn_params, rb_params)
-    batch_f = jax.vmap(f, in_axes=(None, None, 0))
-    joint_out = batch_f(entire_params, key, x)
+def neg_bayesian_ei(key, f, x, Y, xi):
+    joint_out = f(key, x)
     mu = joint_out[0]
     std = jnp.sqrt(joint_out[1])
     best = jnp.max(Y)
@@ -322,37 +310,38 @@ def neg_bayesian_ucb(key, f, x, beta=2.0):
     return ucb
 
 
-def bayes_opt(key, infer_t, labels, init_logits, nn_params, aconfig: AlgConfig = None):
-    # infer_t(params, key, x)
+def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None):
     if aconfig is None:
         aconfig = AlgConfig()
-    
-    init_rb_params = infer_t.init(key, init_logits)
     optimizer = optax.adam(aconfig.bo_lr)
-    opt_state = optimizer.init(init_logits, init_rb_params)
-    x = init_logits
-    rb_params = init_rb_params
-    logits_rb = (x, rb_params)
+    # optimizer = optax.adam(optax.cosine_decay_schedule(1e-1, 50))
+    # optimizer = optax.adam(optax.cosine_onecycle_schedule(500, 5e-2))
+    opt_state = optimizer.init(init_x)
+    x = init_x
 
     # reduce it so we can take grad
     reduced_neg_bayesian_ei = lambda *args: jnp.mean(neg_bayesian_ei(*args))
     # reduced_neg_bayesian_ucb = lambda *args: jnp.mean(neg_bayesian_ucb(*args))
 
     @jax.jit
-    def step(logits_rb, opt_state, key):
-        loss = neg_bayesian_ei(key, infer_t.apply, x, labels, nn_params, rb_params, aconfig.bo_xi)
-        g = jax.grad(reduced_neg_bayesian_ei, (2, 5))(key, infer_t.apply, x, labels, nn_params, rb_params, aconfig.bo_xi)
+    def step(x, opt_state, key):
+        loss = neg_bayesian_ei(key, f, x, labels, aconfig.bo_xi)
+        g = jax.grad(reduced_neg_bayesian_ei, 2)(
+            key, f, x, labels, aconfig.bo_xi)
+        # loss = neg_bayesian_ucb(key, f, x)
+        # g = jax.grad(reduced_neg_bayesian_ucb, 2)(key, f, x)
+
         updates, opt_state = optimizer.update(g, opt_state)
-        logits_rb = optax.apply_updates(x, updates)
-        return logits_rb, opt_state, loss
+        x = optax.apply_updates(x, updates)
+        return x, opt_state, loss
 
     losses = []
     for step_idx in range(aconfig.bo_epochs):
         key, _ = jax.random.split(key, num=2)
-        logits_rb, opt_state, loss = step(logits_rb, opt_state, key)
+        x, opt_state, loss = step(x, opt_state, key)
         losses.append(loss)
-    #scores = infer_t(key, x)
-    return x, losses
+    scores = f(key, x)
+    return x, losses, scores
 
 
 def grad_opt(key, f, labels, init_x):
@@ -362,7 +351,7 @@ def grad_opt(key, f, labels, init_x):
 
     @jax.jit
     def step(x, opt_state, key):
-        loss, g = jax.value_and_grad(f, 2)(params, key, x)
+        loss, g = jax.value_and_grad(f, 1)(key, x)
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
 
@@ -391,25 +380,35 @@ def alg_iter(
     if aconfig is None:
         aconfig = AlgConfig()
     tkey, xkey, bkey = jax.random.split(key, 3)
-    nn_params, train_loss = ensemble_train(
+    params, train_loss = ensemble_train(
         tkey, train_t, mconfig, x, y, params=start_params, aconfig=aconfig
     )
     if x0_gen is None:
-        init_x = jax.random.normal(xkey, shape=(aconfig.bo_batch_size, *x[0].shape))
+        init_x = jax.random.normal(xkey, shape=(
+            aconfig.bo_batch_size, *x[0].shape))
     else:
         init_x = x0_gen(xkey, aconfig.bo_batch_size)
+
     # package params, since we're no longer training
-    #g = jax.vmap(partial(infer_t.apply, params, training=False), in_axes=(None, 0))
-    #g = jax.vmap(infer_t.apply, in_axes=(None, None, 0))
-    batched_v, bo_loss, scores = bayes_opt(bkey, infer_t, y, init_x, nn_params, aconfig)
+    # sometimes inference may be function directly,
+    # instead of transform
+    try:
+        call_infer = infer_t.apply
+    except AttributeError:
+        call_infer = infer_t
+    g = jax.vmap(partial(call_infer, params,
+                         training=False), in_axes=(None, 0))
+    # do Bayes Opt and save best result only
+    batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, aconfig)
     top_idx = jnp.argmin(bo_loss[-1])
+    # top_idx = jnp.argmax(scores[0])
     best_v = batched_v[top_idx]
     # only return bo loss of chosen sequence
     return (
         best_v,
         batched_v,
         scores,
-        nn_params,
+        params,
         train_loss,
         jnp.array(bo_loss)[..., top_idx],
     )

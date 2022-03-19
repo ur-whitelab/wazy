@@ -22,4 +22,4 @@ from .utils import (
     differentiable_jax_unirep,
     resample
 )
-from .e2e import build_e2e, build_naive_e2e
+from .e2e import EnsembleModel, build_naive_e2e
