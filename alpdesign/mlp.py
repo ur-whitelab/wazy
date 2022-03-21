@@ -402,7 +402,7 @@ def alg_iter(
     batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, aconfig)
     top_idx = jnp.argmin(bo_loss[-1])
     # top_idx = jnp.argmax(scores[0])
-    best_v = batched_v[top_idx]
+    best_v = batched_v[0][top_idx]
     # only return bo loss of chosen sequence
     return (
         best_v,
