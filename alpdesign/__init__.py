@@ -6,11 +6,8 @@ from .version import __version__
 from .mlp import (
     EnsembleBlockConfig,
     ensemble_train,
-    naive_train,
     bayes_opt,
     alg_iter,
-    grad_iter,
-    grad_opt,
     neg_bayesian_ei,
     neg_bayesian_ucb,
     nn_score,

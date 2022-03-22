@@ -260,41 +260,6 @@ def ensemble_train(
     return (params, losses)
 
 
-def naive_train(
-    key,
-    forward_t,
-    seqs,
-    labels,
-    params=None
-):
-    opt_init, opt_update = optax.adam(learning_rate=1e-4)
-    key, bkey = jax.random.split(key)
-
-    if params == None:
-        params = forward_t.init(key, seqs[0])
-    opt_state = opt_init(params)
-
-    loss_fxn = partial(_naive_loss, forward_t.apply)
-
-    @jax.jit
-    def train_step(opt_state, params, key, seqs, labels):
-        loss, grad = jax.value_and_grad(loss_fxn, 1)(key, params, seqs, labels)
-        updates, opt_state = opt_update(grad, opt_state, params)
-        params = optax.apply_updates(params, updates)
-        return opt_state, params, loss
-
-    train_loss = 0.0
-    for e in range(100):
-        for dx, dy in zip(seqs, labels):
-            key, key_ = jax.random.split(key, num=2)
-            opt_state, params, loss = train_step(
-                opt_state, params, key, dx, dy)
-            # print(loss)
-            train_loss += loss
-
-    return params, loss
-
-
 def neg_bayesian_ei(key, f, x, Y, xi=0.01):
     joint_out = f(key, x)
     mu = joint_out[0]
@@ -349,28 +314,6 @@ def bayes_opt(key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConf
     return x, losses, scores
 
 
-def grad_opt(key, f, labels, init_x):
-    optimizer = optax.adam(learning_rate=1e-2)
-    opt_state = optimizer.init(init_x)
-    x = init_x
-
-    @jax.jit
-    def step(x, opt_state, key):
-        loss, g = jax.value_and_grad(f, 1)(key, x)
-        updates, opt_state = optimizer.update(g, opt_state)
-        x = optax.apply_updates(x, updates)
-
-        return x, opt_state, loss
-
-    losses = []
-    for step_idx in range(100):
-        key, _ = jax.random.split(key, num=2)
-        x, opt_state, loss = step(x, opt_state, key)
-        losses.append(loss)
-
-    return x, losses
-
-
 def alg_iter(
     key,
     x,
@@ -379,6 +322,7 @@ def alg_iter(
     infer_t,
     mconfig,
     cost_fxn=neg_bayesian_ei,
+    dual=True,
     aconfig=None,
     x0_gen=None,
     start_params=None,
@@ -387,7 +331,7 @@ def alg_iter(
         aconfig = AlgConfig()
     tkey, xkey, bkey = jax.random.split(key, 3)
     params, train_loss = ensemble_train(
-        tkey, train_t, mconfig, x, y, params=start_params, aconfig=aconfig
+        tkey, train_t, mconfig, x, y, params=start_params, aconfig=aconfig, dual=dual
     )
     if x0_gen is None:
         init_x = jax.random.normal(xkey, shape=(
@@ -418,25 +362,3 @@ def alg_iter(
         train_loss,
         jnp.array(bo_loss)[..., top_idx],
     )
-
-
-def grad_iter(
-    key, x, y, train_t, infer_t, mconfig, x0_gen=None, start_params=None
-):
-    tkey, xkey, bkey = jax.random.split(key, 3)
-    params, train_loss = naive_train(
-        key, train_t, x, y, params=None,
-    )
-    if x0_gen is None:
-        init_x = jax.random.normal(xkey, shape=(8, *x[0].shape))
-    else:
-        init_x = x0_gen(xkey, 8)
-    # package params, since we're no longer training
-    #g = jax.vmap(partial(infer_t.apply, params), in_axes=(None, 0))
-    g = partial(infer_t.apply, params)
-    # do Bayes Opt and save best result only
-    batched_v, grad_loss = grad_opt(bkey, g, y, init_x)
-    top_idx = jnp.argmin(grad_loss[-1])
-    best_v = batched_v[top_idx]
-    # only return bo loss of chosen sequence
-    return best_v, params, train_loss, jnp.array(grad_loss)[..., top_idx]
