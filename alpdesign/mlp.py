@@ -128,8 +128,8 @@ class NaiveBlock(hk.Module):
         return x
 
 
-def _naive_loss(forward, key, params, x, y):
-    yhat = forward(params, key, x)
+def _naive_loss(forward, params, key, x, y, epsilon=0.0):
+    yhat = forward(params, key, x)[..., 0]
     return jnp.mean(jnp.square(y - yhat))
 
 
@@ -191,6 +191,7 @@ def ensemble_train(
     labels,
     params=None,
     aconfig: AlgConfig = None,
+    dual=True
 ):
     if aconfig is None:
         aconfig = AlgConfig()
@@ -232,11 +233,13 @@ def ensemble_train(
     if params == None:
         params = forward_t.init(key, batch_seqs[0])
     opt_state = opt_init(params)
-    adv_loss = partial(_adv_loss_func, forward_t.apply, mconfig.model_number)
-
+    if dual == True:
+        loss_fxn = partial(_adv_loss_func, forward_t.apply, mconfig.model_number)
+    else: 
+        loss_fxn = partial(_naive_loss, forward_t.apply)
     @jax.jit
     def train_step(opt_state, params, key, seq, label):
-        loss, grad = jax.value_and_grad(adv_loss, 0)(
+        loss, grad = jax.value_and_grad(loss_fxn, 0)(
             params, key, seq, label, aconfig.train_adv_loss_weight
         )
         updates, opt_state = opt_update(grad, opt_state, params)
@@ -292,7 +295,7 @@ def naive_train(
     return params, loss
 
 
-def neg_bayesian_ei(key, f, x, Y, xi):
+def neg_bayesian_ei(key, f, x, Y, xi=0.01):
     joint_out = f(key, x)
     mu = joint_out[0]
     std = jnp.sqrt(joint_out[1])
@@ -302,15 +305,20 @@ def neg_bayesian_ei(key, f, x, Y, xi):
     return -((mu - best - xi) * norm.cdf(z) + std * norm.pdf(z))
 
 
-def neg_bayesian_ucb(key, f, x, beta=2.0):
+def neg_bayesian_ucb(key, f, x, Y, beta=2.0):
     joint_out = f(key, x)
     mu = joint_out[0]
     std = jnp.sqrt(joint_out[1])
     ucb = mu + beta * std
-    return ucb
+    return -ucb
+
+def nn_score(key, f, x, Y, xi=0.01):
+    joint_out = f(key, x)
+    score = joint_out[0]
+    return -score
 
 
-def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None):
+def bayes_opt(key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
     if aconfig is None:
         aconfig = AlgConfig()
     optimizer = optax.adam(aconfig.bo_lr)
@@ -320,16 +328,13 @@ def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None):
     x = init_x
 
     # reduce it so we can take grad
-    reduced_neg_bayesian_ei = lambda *args: jnp.mean(neg_bayesian_ei(*args))
-    # reduced_neg_bayesian_ucb = lambda *args: jnp.mean(neg_bayesian_ucb(*args))
+    reduced_cost_fxn = lambda *args: jnp.mean(cost_fxn(*args))
 
     @jax.jit
     def step(x, opt_state, key):
-        loss = neg_bayesian_ei(key, f, x, labels, aconfig.bo_xi)
-        g = jax.grad(reduced_neg_bayesian_ei, 2)(
+        loss = cost_fxn(key, f, x, labels, aconfig.bo_xi)
+        g = jax.grad(reduced_cost_fxn, 2)(
             key, f, x, labels, aconfig.bo_xi)
-        # loss = neg_bayesian_ucb(key, f, x)
-        # g = jax.grad(reduced_neg_bayesian_ucb, 2)(key, f, x)
 
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
@@ -373,6 +378,7 @@ def alg_iter(
     train_t,
     infer_t,
     mconfig,
+    cost_fxn=neg_bayesian_ei,
     aconfig=None,
     x0_gen=None,
     start_params=None,
@@ -399,7 +405,7 @@ def alg_iter(
     g = jax.vmap(partial(call_infer, params,
                          training=False), in_axes=(None, 0))
     # do Bayes Opt and save best result only
-    batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, aconfig)
+    batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
     top_idx = jnp.argmin(bo_loss[-1])
     # top_idx = jnp.argmax(scores[0])
     best_v = batched_v[0][top_idx]
