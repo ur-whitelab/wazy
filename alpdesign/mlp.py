@@ -15,7 +15,7 @@ from .utils import resample
 @dataclass
 class EnsembleBlockConfig:
     shape: tuple = (
-        256,
+        #256,
         128,
         64,
         2,
@@ -26,10 +26,10 @@ class EnsembleBlockConfig:
 
 @dataclass
 class AlgConfig:
-    train_epochs: int = 10
+    train_epochs: int = 100
     train_batch_size: int = 8
     train_resampled_data_size: int = 8
-    train_resampled_classes: int = 5
+    train_resampled_classes: int = 10
     train_lr: float = 1e-2
     train_adam_b1: float = 0.8
     train_adam_b2: float = 0.9
@@ -165,7 +165,7 @@ def _adv_loss_func(forward, M, params, key, seq_tile, label_tile, epsilon):
     ) + _deep_ensemble_loss(params, key2, forward, seqs_, label_tile)
 
 
-def _shuffle_in_unison(key, a, b):
+def _shuffle(key, a, b):
     # NOTE to future self: do not try to rely on keys being same
     # something about shape of arrays makes shuffle not the same
     assert len(a) == len(b)
@@ -239,6 +239,7 @@ def ensemble_train(
         loss_fxn = partial(_naive_loss, forward_t.apply)
     @jax.jit
     def train_step(opt_state, params, key, seq, label):
+        seq, label = _shuffle(key, seq, label)
         loss, grad = jax.value_and_grad(loss_fxn, 0)(
             params, key, seq, label, aconfig.train_adv_loss_weight
         )
