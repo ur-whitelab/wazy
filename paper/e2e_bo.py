@@ -52,7 +52,7 @@ c.dropout=0.2
 c.model_number = 5
 aconfig.train_epochs = 100
 aconfig.train_lr = 1e-4
-aconfig.b0_xi = 2.0
+aconfig.b0_xi = 0.01
 aconfig.bo_batch_size = 8
 aconfig.train_resampled_classes = 10
 model = alpdesign.EnsembleModel(c)
@@ -94,7 +94,7 @@ def loop(key, reps, labels, params, idx):
     def x0_gen(key, batch_size): return model.random_seqs(
         key, batch_size, sparams, 13)
     best_v, batched_v, scores, params, train_loss, bo_loss = alpdesign.alg_iter(
-        key2, reps, labels, model.train_t, model.seq_apply, c, cost_fxn=alpdesign.neg_bayesian_ucb , aconfig=aconfig, x0_gen=x0_gen
+        key2, reps, labels, model.train_t, model.seq_apply, c, cost_fxn=alpdesign.neg_bayesian_ei , aconfig=aconfig, x0_gen=x0_gen
         )
     
     s = alpdesign.decode_seq(best_v)

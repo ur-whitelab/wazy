@@ -70,13 +70,15 @@ def get_blosum_labels(seqs):
 
     return labels
 
+def get_ohc(seqs):
+    return jnp.array([encode_seq(list(s)) for s in seqs]).reshape(len(seqs),-1)
 
 target_seq = 'TARGETPEPTIDE'
 oh_vec = alpdesign.encode_seq(list(target_seq))
 oh_unirep = oh_vec.flatten()
 seqs = [random.choice(random_seqs)]
-
-reps = get_reps(seqs)[0]
+reps = get_ohc(seqs)
+#reps = get_reps(seqs)[0]
 labels = []
 for seq in seqs:
     labels.append(blosum(target_seq, seq))
@@ -106,8 +108,8 @@ def loop(key, reps, labels, params, idx):
       vs.append(decode_v)
       yvs.append(blosum(target_seq, decode_v))
     
-    reps = np.concatenate((reps, get_reps([s])[0]))
-    yhat = model.infer_t.apply(params, key, get_reps([s])[0])
+    reps = np.concatenate((reps, get_ohc([s])))
+    yhat = model.infer_t.apply(params, key, get_ohc([s]))
     y = blosum(target_seq, s)
     #print(s, y, yhat[0], jnp.sqrt(yhat[2]))
     #print(vs)
@@ -119,7 +121,7 @@ def loop(key, reps, labels, params, idx):
 
 for j in range(50):
     seqs = [random.choice(random_seqs)]
-    reps = get_reps(seqs)[0]
+    reps = get_ohc(seqs)
     labels = []
     for seq in seqs:
         labels.append(blosum(target_seq, seq))
@@ -131,6 +133,6 @@ for j in range(50):
         key, reps, labels, final_vec, real_label, params, bo_loss, mlp_loss= loop(key, reps, labels, params, i)
         y.append(real_label)
 
-    with open('result_e2e_bo/labels/y_{0}.pkl'.format(j), 'wb') as f1:
+    with open('result_e2e_ohc/labels/y_{0}.pkl'.format(j), 'wb') as f1:
         pickle.dump(y, f1)
     

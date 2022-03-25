@@ -45,14 +45,14 @@ c = alpdesign.EnsembleBlockConfig()
 aconfig = AlgConfig()
 c.shape = (
         128,
-        #64,
+        64,
         32,
         2,)
-c.dropout=0.2
+c.dropout=0.3
 c.model_number = 5
 aconfig.train_epochs = 100
 aconfig.train_lr = 1e-4
-aconfig.b0_xi = 2.0
+aconfig.b0_xi = 0.1
 aconfig.bo_batch_size = 8
 aconfig.train_resampled_classes = 10
 model = alpdesign.EnsembleModel(c)
@@ -82,19 +82,19 @@ for seq in seqs:
     labels.append(blosum(target_seq, seq))
 labels = np.array(labels)
 
-print(labels)
+#print(labels)
 key = jax.random.PRNGKey(0)
 
 def gen(k, n): return jax.random.normal(k, shape=(n, 13, 20))
 
-def loop(key, reps, labels, params, idx):
+def naive_loop(key, reps, labels, params, idx):
     key, key2 = jax.random.split(key)
     s = jax.random.normal(key, shape=(13, 20))
     sparams = model.seq_t.init(key, s)
     def x0_gen(key, batch_size): return model.random_seqs(
         key, batch_size, sparams, 13)
     best_v, batched_v, scores, params, train_loss, bo_loss = alpdesign.alg_iter(
-        key2, reps, labels, model.train_t, model.seq_apply, c, cost_fxn=alpdesign.neg_bayesian_ucb , aconfig=aconfig, x0_gen=x0_gen
+        key2, reps, labels, model.train_t, model.seq_apply, c, cost_fxn=alpdesign.neg_bayesian_ei, dual=False, aconfig=aconfig, x0_gen=x0_gen
         )
     
     s = alpdesign.decode_seq(best_v)
@@ -112,7 +112,7 @@ def loop(key, reps, labels, params, idx):
     #print(s, y, yhat[0], jnp.sqrt(yhat[2]))
     #print(vs)
     #print(yvs)
-    
+    #print(scores)
     labels = np.concatenate((labels, np.array(y).reshape(1,)))
     return key, reps, labels, s, y, params, bo_loss, train_loss
 
@@ -128,9 +128,9 @@ for j in range(50):
     for i in range(100):
         params = None
         key, _ = jax.random.split(key, num=2)
-        key, reps, labels, final_vec, real_label, params, bo_loss, mlp_loss= loop(key, reps, labels, params, i)
+        key, reps, labels, final_vec, real_label, params, bo_loss, mlp_loss= naive_loop(key, reps, labels, params, i)
         y.append(real_label)
 
-    with open('result_e2e_bo/labels/y_{0}.pkl'.format(j), 'wb') as f1:
+    with open('result_e2e_grad/labels/y_{0}.pkl'.format(j), 'wb') as f1:
         pickle.dump(y, f1)
     
