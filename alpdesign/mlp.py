@@ -322,6 +322,7 @@ def alg_iter(
     train_t,
     infer_t,
     mconfig,
+    seq_len=13,
     cost_fxn=neg_bayesian_ei,
     dual=True,
     aconfig=None,
@@ -337,8 +338,12 @@ def alg_iter(
     if x0_gen is None:
         init_x = jax.random.normal(xkey, shape=(
             aconfig.bo_batch_size, *x[0].shape))
+        minus_x = init_x
+        plus_x = init_x
     else:
-        init_x = x0_gen(xkey, aconfig.bo_batch_size)
+        init_x = x0_gen(xkey, aconfig.bo_batch_size, seq_len)
+        minus_x = x0_gen(xkey, aconfig.bo_batch_size, seq_len-1)
+        plus_x = x0_gen(xkey, aconfig.bo_batch_size, seq_len+1)
 
     # package params, since we're no longer training
     # sometimes inference may be function directly,
@@ -351,15 +356,27 @@ def alg_iter(
                          training=False), in_axes=(None, 0))
     # do Bayes Opt and save best result only
     batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
-    top_idx = jnp.argmin(bo_loss[-1])
-    # top_idx = jnp.argmax(scores[0])
-    best_v = batched_v[0][top_idx]
-    # only return bo loss of chosen sequence
+    batched_v_minus, bo_loss_minus, scores_minus = bayes_opt(bkey, g, y, minus_x, cost_fxn, aconfig)
+    batched_v_plus, bo_loss_plus, scores_plus = bayes_opt(bkey, g, y, plus_x, cost_fxn, aconfig)
+    
+    min_pos = jnp.argmin(jnp.min(bo_loss[-1]), jnp.min(bo_loss_minus[-1]), jnp.min(bo_loss_plus[-1]))
+    if min_pos == 1:
+        top_idx = top_idx_minus = jnp.argmin(bo_loss_minus[-1])
+        best_v = batched_v_minus[0][top_idx]
+        seq_len -= 1
+    elif min_pos == 2:
+        top_idx = top_idx_plus = jnp.argmin(bo_loss_plus[-1])
+        best_v = batched_v_plus[0][top_idx]
+        seq_len += 1
+    else:
+        top_idx = jnp.argmin(bo_loss[-1])
+        best_v = batched_v[0][top_idx]
+
     return (
         best_v,
         batched_v,
-        scores,
         params,
         train_loss,
-        jnp.array(bo_loss)[..., top_idx],
+        seq_len
+        #jnp.array(bo_loss)[..., top_idx],
     )
