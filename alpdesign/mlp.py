@@ -359,10 +359,12 @@ def alg_iter(
     batched_v_minus, bo_loss_minus, scores_minus = bayes_opt(bkey, g, y, minus_x, cost_fxn, aconfig)
     batched_v_plus, bo_loss_plus, scores_plus = bayes_opt(bkey, g, y, plus_x, cost_fxn, aconfig)
     
-    min_pos = jnp.argmin(jnp.min(bo_loss[-1]), jnp.min(bo_loss_minus[-1]), jnp.min(bo_loss_plus[-1]))
+    min_pos = jnp.argmin(jnp.array([jnp.min(bo_loss[-1]), jnp.min(bo_loss_minus[-1]), jnp.min(bo_loss_plus[-1])]))
     if min_pos == 1:
         top_idx = top_idx_minus = jnp.argmin(bo_loss_minus[-1])
         best_v = batched_v_minus[0][top_idx]
+        if seq_len == 2:
+            seq_len += 1
         seq_len -= 1
     elif min_pos == 2:
         top_idx = top_idx_plus = jnp.argmin(bo_loss_plus[-1])
