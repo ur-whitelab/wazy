@@ -1,4 +1,6 @@
-from functools import partial  # for use with vmap
+from functools import partial
+from typing import Callable
+from alpdesign.seq import SeqpropBlock  # for use with vmap
 import jax
 import jax.numpy as jnp
 import haiku as hk
@@ -13,7 +15,7 @@ from .utils import resample
 @dataclass
 class EnsembleBlockConfig:
     shape: tuple = (
-        256,
+        #256,
         128,
         64,
         2,
@@ -27,14 +29,14 @@ class AlgConfig:
     train_epochs: int = 100
     train_batch_size: int = 8
     train_resampled_data_size: int = 8
-    train_resampled_classes: int = 5
+    train_resampled_classes: int = 10
     train_lr: float = 1e-2
     train_adam_b1: float = 0.8
     train_adam_b2: float = 0.9
     train_adam_eps: float = 1e-4
     train_adv_loss_weight: float = 1e-3
     weight_decay: float = 1e-1
-    bo_epochs: int = 500
+    bo_epochs: int = 50
     bo_lr: float = 1e-2
     bo_xi: float = 1e-1
     bo_batch_size: int = 8
@@ -46,7 +48,7 @@ class SingleBlock(hk.Module):
         super().__init__(name=name)
         self.config = config
 
-    def __call__(self, x, training=True):
+    def __call__(self, x, training):
         key = hk.next_rng_key()
         keys = jax.random.split(key, num=self.config.model_number)
         for idx, dim in enumerate(self.config.shape):
@@ -86,7 +88,8 @@ class BiLSTM(hk.Module):
             reverse=True,
             time_major=False,
         )
-        outs = jnp.take(jnp.concatenate([fwd_outs, bwd_outs], axis=-1), -1, axis=-2)
+        outs = jnp.take(jnp.concatenate(
+            [fwd_outs, bwd_outs], axis=-1), -1, axis=-2)
         outs = hk.BatchApply(hk.Linear(64), num_dims=1)(outs)
         outs = jax.nn.relu(outs)
         outs = hk.BatchApply(hk.Linear(16), num_dims=1)(outs)
@@ -100,7 +103,7 @@ class EnsembleBlock(hk.Module):
         self.config = config
 
     # x is of shape ([ensemble_num, *seqs.shape])
-    def __call__(self, x, training=True):
+    def __call__(self, x, training):
         out = jnp.array(
             [
                 # BiLSTM(2)(x[i])
@@ -125,28 +128,15 @@ class NaiveBlock(hk.Module):
         return x
 
 
-def _naive_loss(forward, key, params, x, y):
-    yhat = forward(params, key, x)
+def _naive_loss(forward, params, key, x, y, epsilon=0.0):
+    yhat = forward(params, key, x)[..., 0]
     return jnp.mean(jnp.square(y - yhat))
 
 
-def _transform_var(s):
-    # heuristic to make MLP output better behaved.
-    return jax.nn.softplus(s) + 1e-6
-
-
-def model_reduce(out):
-    mu = jnp.mean(out[..., 0], axis=0)
-    var = jnp.mean(_transform_var(out[..., 1]) + out[..., 0] ** 2, axis=0) - mu ** 2
-    epi_var = jnp.std(out[..., 0], axis=0) ** 2
-    return mu, var, epi_var
-
-
 def _deep_ensemble_loss(params, key, forward, seqs, labels):
-    out = forward(params, key, seqs, training=True)
-    # out = model_reduce(out)
+    out = forward(params, key, seqs)
     means = out[..., 0]
-    sstds = _transform_var(out[..., 1])
+    sstds = transform_var(out[..., 1])
     # means, sstds = out
     n_log_likelihoods = (
         0.5 * jnp.log(sstds)
@@ -167,16 +157,15 @@ def _adv_loss_func(forward, M, params, key, seq_tile, label_tile, epsilon):
 
     def _var(params, forward, seqs):
         out = forward(params, key, seqs)
-        return jnp.sum(_transform_var(out[..., 1]))
+        return jnp.sum(transform_var(out[..., 1]))
 
     seqs_ = seq_tile + epsilon * jnp.sign(grad_inputs)
     return _deep_ensemble_loss(
         params, key1, forward, seq_tile, label_tile
     ) + _deep_ensemble_loss(params, key2, forward, seqs_, label_tile)
-    
 
 
-def _shuffle_in_unison(key, a, b):
+def _shuffle(key, a, b):
     # NOTE to future self: do not try to rely on keys being same
     # something about shape of arrays makes shuffle not the same
     assert len(a) == len(b)
@@ -187,7 +176,8 @@ def _shuffle_in_unison(key, a, b):
 def _fill_to_batch(x, y, key, batch_size):
     if len(y) >= batch_size:
         return x, y
-    i = jax.random.choice(key, jnp.arange(len(y)), shape=(batch_size,), replace=True)
+    i = jax.random.choice(key, jnp.arange(
+        len(y)), shape=(batch_size,), replace=True)
     x = x[i, ...]
     y = y[i, ...]
     return x, y
@@ -201,6 +191,7 @@ def ensemble_train(
     labels,
     params=None,
     aconfig: AlgConfig = None,
+    dual=True
 ):
     if aconfig is None:
         aconfig = AlgConfig()
@@ -232,7 +223,8 @@ def ensemble_train(
         labels, (N, mconfig.model_number), nclasses=aconfig.train_resampled_classes
     )
     batch_seqs = seqs[idx, ...].reshape(
-        batch_num, mconfig.model_number, aconfig.train_batch_size, *seqs.shape[1:]
+        batch_num, mconfig.model_number, aconfig.train_batch_size, *
+        seqs.shape[1:]
     )
     batch_labels = labels[idx, ...].reshape(
         batch_num, mconfig.model_number, aconfig.train_batch_size
@@ -241,11 +233,14 @@ def ensemble_train(
     if params == None:
         params = forward_t.init(key, batch_seqs[0])
     opt_state = opt_init(params)
-    adv_loss = partial(_adv_loss_func, forward_t.apply, mconfig.model_number)
-
+    if dual == True:
+        loss_fxn = partial(_adv_loss_func, forward_t.apply, mconfig.model_number)
+    else: 
+        loss_fxn = partial(_naive_loss, forward_t.apply)
     @jax.jit
     def train_step(opt_state, params, key, seq, label):
-        loss, grad = jax.value_and_grad(adv_loss, 0)(
+        seq, label = _shuffle(key, seq, label)
+        loss, grad = jax.value_and_grad(loss_fxn, 0)(
             params, key, seq, label, aconfig.train_adv_loss_weight
         )
         updates, opt_state = opt_update(grad, opt_state, params)
@@ -266,42 +261,7 @@ def ensemble_train(
     return (params, losses)
 
 
-def naive_train(
-    key,
-    forward_t,
-    seqs,
-    labels,
-    params=None
-):
-    opt_init, opt_update = optax.adam(learning_rate=1e-4)
-    key, bkey = jax.random.split(key)
-
-
-    if params == None:
-        params = forward_t.init(key, seqs[0])
-    opt_state = opt_init(params)
-    
-    loss_fxn = partial(_naive_loss, forward_t.apply)
-
-    @jax.jit
-    def train_step(opt_state, params, key, seqs, labels):
-        loss, grad = jax.value_and_grad(loss_fxn, 1)(key, params, seqs, labels)
-        updates, opt_state = opt_update(grad, opt_state, params)
-        params = optax.apply_updates(params, updates)
-        return opt_state, params, loss
-
-    train_loss = 0.0
-    for e in range(100):
-        for dx, dy in zip(seqs, labels):
-          key, key_ = jax.random.split(key, num=2)
-          opt_state, params, loss = train_step(opt_state, params, key, dx, dy)
-          #print(loss)
-          train_loss += loss
-
-    return params, loss
-
-
-def neg_bayesian_ei(key, f, x, Y, xi):
+def neg_bayesian_ei(key, f, x, Y, xi=0.01):
     joint_out = f(key, x)
     mu = joint_out[0]
     std = jnp.sqrt(joint_out[1])
@@ -311,15 +271,20 @@ def neg_bayesian_ei(key, f, x, Y, xi):
     return -((mu - best - xi) * norm.cdf(z) + std * norm.pdf(z))
 
 
-def neg_bayesian_ucb(key, f, x, beta=2.0):
+def neg_bayesian_ucb(key, f, x, Y, beta=2.0):
     joint_out = f(key, x)
     mu = joint_out[0]
     std = jnp.sqrt(joint_out[1])
     ucb = mu + beta * std
-    return ucb
+    return -ucb
+
+def nn_score(key, f, x, Y, xi=0.01):
+    joint_out = f(key, x)
+    score = joint_out[0]
+    return -score
 
 
-def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None):
+def bayes_opt(key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
     if aconfig is None:
         aconfig = AlgConfig()
     optimizer = optax.adam(aconfig.bo_lr)
@@ -329,15 +294,13 @@ def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None):
     x = init_x
 
     # reduce it so we can take grad
-    reduced_neg_bayesian_ei = lambda *args: jnp.mean(neg_bayesian_ei(*args))
-    # reduced_neg_bayesian_ucb = lambda *args: jnp.mean(neg_bayesian_ucb(*args))
+    reduced_cost_fxn = lambda *args: jnp.mean(cost_fxn(*args))
 
     @jax.jit
     def step(x, opt_state, key):
-        loss = neg_bayesian_ei(key, f, x, labels, aconfig.bo_xi)
-        g = jax.grad(reduced_neg_bayesian_ei, 2)(key, f, x, labels, aconfig.bo_xi)
-        # loss = neg_bayesian_ucb(key, f, x)
-        # g = jax.grad(reduced_neg_bayesian_ucb, 2)(key, f, x)
+        loss = cost_fxn(key, f, x, labels, aconfig.bo_xi)
+        g = jax.grad(reduced_cost_fxn, 2)(
+            key, f, x, labels, aconfig.bo_xi)
 
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
@@ -352,28 +315,6 @@ def bayes_opt(key, f, labels, init_x, aconfig: AlgConfig = None):
     return x, losses, scores
 
 
-def grad_opt(key, f, labels, init_x):
-    optimizer = optax.adam(learning_rate=1e-2)
-    opt_state = optimizer.init(init_x)
-    x = init_x
-
-    @jax.jit
-    def step(x, opt_state, key):
-        loss, g = jax.value_and_grad(f, 1)(key, x)
-        updates, opt_state = optimizer.update(g, opt_state)
-        x = optax.apply_updates(x, updates)
-
-        return x, opt_state, loss
-
-    losses = []
-    for step_idx in range(100):
-        key, _ = jax.random.split(key, num=2)
-        x, opt_state, loss = step(x, opt_state, key)
-        losses.append(loss)
-
-    return x, losses
-
-
 def alg_iter(
     key,
     x,
@@ -381,6 +322,9 @@ def alg_iter(
     train_t,
     infer_t,
     mconfig,
+    seq_len=13,
+    cost_fxn=neg_bayesian_ei,
+    dual=True,
     aconfig=None,
     x0_gen=None,
     start_params=None,
@@ -389,47 +333,52 @@ def alg_iter(
         aconfig = AlgConfig()
     tkey, xkey, bkey = jax.random.split(key, 3)
     params, train_loss = ensemble_train(
-        tkey, train_t, mconfig, x, y, params=start_params, aconfig=aconfig
+        tkey, train_t, mconfig, x, y, params=start_params, aconfig=aconfig, dual=dual
     )
     if x0_gen is None:
-        init_x = jax.random.normal(xkey, shape=(aconfig.bo_batch_size, *x[0].shape))
+        init_x = jax.random.normal(xkey, shape=(
+            aconfig.bo_batch_size, *x[0].shape))
+        minus_x = init_x
+        plus_x = init_x
     else:
-        init_x = x0_gen(xkey, aconfig.bo_batch_size)
+        init_x = x0_gen(xkey, aconfig.bo_batch_size, seq_len)
+        minus_x = x0_gen(xkey, aconfig.bo_batch_size, seq_len-1)
+        plus_x = x0_gen(xkey, aconfig.bo_batch_size, seq_len+1)
+
     # package params, since we're no longer training
-    g = jax.vmap(partial(infer_t.apply, params, training=False), in_axes=(None, 0))
+    # sometimes inference may be function directly,
+    # instead of transform
+    try:
+        call_infer = infer_t.apply
+    except AttributeError:
+        call_infer = infer_t
+    g = jax.vmap(partial(call_infer, params,
+                         training=False), in_axes=(None, 0))
     # do Bayes Opt and save best result only
-    batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, aconfig)
-    top_idx = jnp.argmin(bo_loss[-1])
-    # top_idx = jnp.argmax(scores[0])
-    best_v = batched_v[top_idx]
-    # only return bo loss of chosen sequence
+    batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
+    batched_v_minus, bo_loss_minus, scores_minus = bayes_opt(bkey, g, y, minus_x, cost_fxn, aconfig)
+    batched_v_plus, bo_loss_plus, scores_plus = bayes_opt(bkey, g, y, plus_x, cost_fxn, aconfig)
+    
+    min_pos = jnp.argmin(jnp.array([jnp.min(bo_loss[-1]), jnp.min(bo_loss_minus[-1]), jnp.min(bo_loss_plus[-1])]))
+    if min_pos == 1:
+        top_idx = top_idx_minus = jnp.argmin(bo_loss_minus[-1])
+        best_v = batched_v_minus[0][top_idx]
+        if seq_len == 2:
+            seq_len += 1
+        seq_len -= 1
+    elif min_pos == 2:
+        top_idx = top_idx_plus = jnp.argmin(bo_loss_plus[-1])
+        best_v = batched_v_plus[0][top_idx]
+        seq_len += 1
+    else:
+        top_idx = jnp.argmin(bo_loss[-1])
+        best_v = batched_v[0][top_idx]
+
     return (
         best_v,
         batched_v,
-        scores,
         params,
         train_loss,
-        jnp.array(bo_loss)[..., top_idx],
+        seq_len
+        #jnp.array(bo_loss)[..., top_idx],
     )
-
-
-def grad_iter(
-    key, x, y, train_t, infer_t, mconfig, x0_gen=None, start_params=None
-):
-    tkey, xkey, bkey = jax.random.split(key, 3)
-    params, train_loss = naive_train(
-        key, train_t, x, y, params=None,
-    )
-    if x0_gen is None:
-        init_x = jax.random.normal(xkey, shape=(8, *x[0].shape))
-    else:
-        init_x = x0_gen(xkey, 8)
-    # package params, since we're no longer training
-    #g = jax.vmap(partial(infer_t.apply, params), in_axes=(None, 0))
-    g = partial(infer_t.apply, params)
-    # do Bayes Opt and save best result only
-    batched_v, grad_loss = grad_opt(bkey, g, y, init_x)
-    top_idx = jnp.argmin(grad_loss[-1])
-    best_v = batched_v[top_idx]
-    # only return bo loss of chosen sequence
-    return best_v, params, train_loss, jnp.array(grad_loss)[..., top_idx]

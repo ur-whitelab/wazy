@@ -26,4 +26,4 @@ conda activate prettyB
 ######## SIMULATION DETAILS GO HERE ##############
 #################################################
 
-python /home/zyang43/ALP-Design/paper/e2e.py
+python /scratch/zyang43/ALP-Design/paper/e2e_ucb.py

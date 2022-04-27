@@ -6,11 +6,11 @@ from .version import __version__
 from .mlp import (
     EnsembleBlockConfig,
     ensemble_train,
-    naive_train,
     bayes_opt,
     alg_iter,
-    grad_iter,
-    grad_opt,
+    neg_bayesian_ei,
+    neg_bayesian_ucb,
+    nn_score,
     AlgConfig,
 )
 from .seq import SeqpropBlock
@@ -22,4 +22,4 @@ from .utils import (
     differentiable_jax_unirep,
     resample
 )
-from .e2e import build_e2e, build_naive_e2e
+from .e2e import EnsembleModel, build_naive_e2e

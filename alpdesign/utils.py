@@ -118,3 +118,8 @@ def resample(y, output_shape, nclasses=10):
     c = np.random.choice(np.arange(nclasses), size=output_shape)
     f = np.vectorize(lambda i: np.random.choice(idx[i]))
     return f(c)
+
+
+def transform_var(s):
+    # heuristic to make MLP output better behaved.
+    return jax.nn.softplus(s) + 1e-6
