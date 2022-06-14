@@ -56,7 +56,7 @@ class SingleBlock(hk.Module):
             if idx == 0 and training:
                 x = hk.dropout(keys[idx], self.config.dropout, x)
             if idx < len(self.config.shape) - 1:
-                x = jax.nn.tanh(x)
+                x = jax.nn.swish(x)
                 # if idx > 0:
                 # x = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True)(x)
         return x
@@ -202,7 +202,7 @@ def ensemble_train(
             b2=aconfig.train_adam_b2,
             eps=aconfig.train_adam_eps,
         ),
-        # optax.add_decayed_weights(aconfig.weight_decay),
+        optax.add_decayed_weights(aconfig.weight_decay),
         optax.scale(-aconfig.train_lr),  # minus sign -- minimizing the loss
         # optax.scale_by_schedule(optax.cosine_decay_schedule(-1e-2., 50)),
         # optax.adam(optax.cosine_onecycle_schedule(500, aconfig.train_lr)),
@@ -356,9 +356,9 @@ def alg_iter(
                          training=False), in_axes=(None, 0))
     # do Bayes Opt and save best result only
     batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
-    batched_v_minus, bo_loss_minus, scores_minus = bayes_opt(bkey, g, y, minus_x, cost_fxn, aconfig)
-    batched_v_plus, bo_loss_plus, scores_plus = bayes_opt(bkey, g, y, plus_x, cost_fxn, aconfig)
-    
+    #batched_v_minus, bo_loss_minus, scores_minus = bayes_opt(bkey, g, y, minus_x, cost_fxn, aconfig)
+    #batched_v_plus, bo_loss_plus, scores_plus = bayes_opt(bkey, g, y, plus_x, cost_fxn, aconfig)
+    '''
     min_pos = jnp.argmin(jnp.array([jnp.min(bo_loss[-1]), jnp.min(bo_loss_minus[-1]), jnp.min(bo_loss_plus[-1])]))
     if min_pos == 1:
         top_idx = top_idx_minus = jnp.argmin(bo_loss_minus[-1])
@@ -371,8 +371,9 @@ def alg_iter(
         best_v = batched_v_plus[0][top_idx]
         seq_len += 1
     else:
-        top_idx = jnp.argmin(bo_loss[-1])
-        best_v = batched_v[0][top_idx]
+    '''
+    top_idx = jnp.argmin(bo_loss[-1])
+    best_v = batched_v[0][top_idx]
 
     return (
         best_v,

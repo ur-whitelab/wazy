@@ -45,6 +45,7 @@ class EnsembleModel:
             s = SeqpropBlock()(x)
             us = seq2useq(s)
             u = differentiable_jax_unirep(us)
+            #u = s.flatten()
             mean, var, epi_var = model_forward(u, training=training)
             return mean, epi_var
 
