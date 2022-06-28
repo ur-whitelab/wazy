@@ -72,7 +72,7 @@ def AF2(index, sequence):
   #rasAactual=mda.Universe("/scratch/zyang43/ALP-Design/paper/1nvw-1GTPase.pdb")
   f = open('{0}_unrelaxed_rank_{1}_model_1_scores.json'.format(jobname, rank_num))
   data = json.load(f)
-  plddt = np.mean(data['plddt'][167:182])
+  plddt = np.mean(data['plddt'][167:])
   peptide_atoms = u.select_atoms('segid C and name CA')
   #protein_atoms = rasAactual.select_atoms('resid 15-30 and name CA')
   protein_atoms = u.select_atoms('resid 15-30 and name CA')
