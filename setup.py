@@ -14,7 +14,7 @@ setup(
     license="MIT",
     packages=["alpdesign"],
     install_requires=[
-        "jax",
+        "jax==0.3.14",
         "dm-haiku==0.0.6",
         "optax",
         "numpy",
