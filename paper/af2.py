@@ -53,7 +53,7 @@ def AF2(index, sequence):
     result_dir='.',
     msa_mode="MMseqs2 (UniRef+Environmental)",    
     num_models=1,
-    num_recycles=1,
+    num_recycles=3,
     model_order=[1],
     is_complex=is_complex,
     data_dir=Path("."),
@@ -144,9 +144,9 @@ def loop(key, reps, labels, params, idx, seq_len):
     return key, reps, labels, s, y, ylabel, params, train_loss, seq_len
 
 
-for j in range(50):
+for j in range(30,50):
     #seqs = ['GGGGGGGGGGGGGGGG']
-    seqs = [random.choice(random_seqs)+ 'AKT']
+    seqs = [random.choice(random_seqs)+ 'HGR']
     reps = get_reps(seqs)[0]
     labels = []
     for seq in seqs:
@@ -173,17 +173,18 @@ for j in range(50):
 
     number_str = str(j)
     zero_j = number_str.zfill(2)
-    os.system ("tar cvzf pdb_{0}.tar.gz *.pdb".format(zero_j))
-    with open('/scratch/zyang43/ALP-Design/paper/result_af/labels_0628/y_{0}.pkl'.format(zero_j), 'wb') as f1:
+    os.system("tar cvzf pdb_{0}.tar.gz *.pdb".format(zero_j))
+    os.system("rm -rf yzy*")
+    with open('/scratch/zyang43/ALP-Design/paper/result_af/labels_0712/y_{0}.pkl'.format(zero_j), 'wb') as f1:
         pickle.dump(y, f1)
-    with open('/scratch/zyang43/ALP-Design/paper/result_af/predict_0628/yhat_{0}.pkl'.format(zero_j), 'wb') as f2:
+    with open('/scratch/zyang43/ALP-Design/paper/result_af/predict_0712/yhat_{0}.pkl'.format(zero_j), 'wb') as f2:
         pickle.dump(yhat, f2)
-    #with open('/scratch/zyang43/ALP-Design/paper/result_af/params_0621/params_{0}.pkl'.format(zero_j), 'wb') as f3:
+    #with open('/scratch/zyang43/ALP-Design/paper/result_af/params_0712/params_{0}.pkl'.format(zero_j), 'wb') as f3:
     #    pickle.dump(saved_params, f3)
-    with open('/scratch/zyang43/ALP-Design/paper/result_af/seqs_0628/vec_{0}.pkl'.format(zero_j), 'wb') as f4:
+    with open('/scratch/zyang43/ALP-Design/paper/result_af/seqs_0712/vec_{0}.pkl'.format(zero_j), 'wb') as f4:
         pickle.dump(vecs, f4)
-    with open('/scratch/zyang43/ALP-Design/paper/result_af/output_0628/y_{0}.pkl'.format(zero_j), 'wb') as f5:
+    with open('/scratch/zyang43/ALP-Design/paper/result_af/output_0712/y_{0}.pkl'.format(zero_j), 'wb') as f5:
         pickle.dump(output, f5)
 
-    with open('/scratch/zyang43/ALP-Design/paper/result_af/seqlen_0628/y_{0}.pkl'.format(zero_j), 'wb') as f6:
+    with open('/scratch/zyang43/ALP-Design/paper/result_af/seqlen_0712/y_{0}.pkl'.format(zero_j), 'wb') as f6:
         pickle.dump(seq_lens, f6)
