@@ -56,7 +56,7 @@ class SingleBlock(hk.Module):
             if idx == 0 and training:
                 x = hk.dropout(keys[idx], self.config.dropout, x)
             if idx < len(self.config.shape) - 1:
-                x = jax.nn.tanh(x)
+                x = jax.nn.swish(x)
                 # if idx > 0:
                 # x = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True)(x)
         return x
@@ -202,7 +202,7 @@ def ensemble_train(
             b2=aconfig.train_adam_b2,
             eps=aconfig.train_adam_eps,
         ),
-        # optax.add_decayed_weights(aconfig.weight_decay),
+        optax.add_decayed_weights(aconfig.weight_decay),
         optax.scale(-aconfig.train_lr),  # minus sign -- minimizing the loss
         # optax.scale_by_schedule(optax.cosine_decay_schedule(-1e-2., 50)),
         # optax.adam(optax.cosine_onecycle_schedule(500, aconfig.train_lr)),
