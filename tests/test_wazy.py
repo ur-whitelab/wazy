@@ -132,7 +132,7 @@ class TestMLP(unittest.TestCase):
 
     def test_sine_train(self):
         """Fit to a sine wave and make sure regressed model is
-        is within 2 stddev of label.
+        is within 2 stddev of label 95\% of the time
         """
         N = 32
         x = np.linspace(0, np.pi, 1000)
@@ -140,14 +140,16 @@ class TestMLP(unittest.TestCase):
         reps = x[np.random.randint(0, 1000, size=N)].reshape(-1, 1)
         labels = np.sin(reps)
         key = jax.random.PRNGKey(0)
-        c = wazy.EnsembleBlockConfig()
+        c = wazy.EnsembleBlockConfig(dropout=0)
         model = wazy.EnsembleModel(c)
         params, losses = wazy.ensemble_train(key, model.train_t, c, reps, labels)
         forward = functools.partial(model.infer_t.apply, params, key)
 
+        count = 0
         for xi in x:
             v = forward(xi[np.newaxis])
-            assert (v[0] - np.sin(xi)) ** 2 < (2 * v[1]) ** 2
+            count += abs(v[0] - np.sin(xi)) > 2 * np.sqrt(v[1])
+        assert count < len(x) * (1 - 0.95)
 
     def test_bayes_seq_opt(self):
         key = jax.random.PRNGKey(0)
