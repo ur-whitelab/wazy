@@ -44,7 +44,9 @@ class EnsembleModel:
         def seq_forward(x, training=True):  # params is trained mlp params
             s = SeqpropBlock()(x)
             us = seq2useq(s)
+            # TODO: What does the other line do???
             u = differentiable_jax_unirep(us)
+            #u = s.flatten()
             mean, var, epi_var = model_forward(u, training=training)
             return mean, epi_var
 

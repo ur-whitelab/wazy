@@ -235,7 +235,7 @@ def ensemble_train(
     opt_state = opt_init(params)
     if dual == True:
         loss_fxn = partial(_adv_loss_func, forward_t.apply, mconfig.model_number)
-    else: 
+    else:
         loss_fxn = partial(_naive_loss, forward_t.apply)
     @jax.jit
     def train_step(opt_state, params, key, seq, label):
@@ -282,7 +282,6 @@ def nn_score(key, f, x, Y, xi=0.01):
     joint_out = f(key, x)
     score = joint_out[0]
     return -score
-
 
 def bayes_opt(key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
     if aconfig is None:
@@ -356,9 +355,9 @@ def alg_iter(
                          training=False), in_axes=(None, 0))
     # do Bayes Opt and save best result only
     batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
-    batched_v_minus, bo_loss_minus, scores_minus = bayes_opt(bkey, g, y, minus_x, cost_fxn, aconfig)
-    batched_v_plus, bo_loss_plus, scores_plus = bayes_opt(bkey, g, y, plus_x, cost_fxn, aconfig)
-    
+    #batched_v_minus, bo_loss_minus, scores_minus = bayes_opt(bkey, g, y, minus_x, cost_fxn, aconfig)
+    #batched_v_plus, bo_loss_plus, scores_plus = bayes_opt(bkey, g, y, plus_x, cost_fxn, aconfig)
+    '''
     min_pos = jnp.argmin(jnp.array([jnp.min(bo_loss[-1]), jnp.min(bo_loss_minus[-1]), jnp.min(bo_loss_plus[-1])]))
     if min_pos == 1:
         top_idx = top_idx_minus = jnp.argmin(bo_loss_minus[-1])
@@ -371,8 +370,9 @@ def alg_iter(
         best_v = batched_v_plus[0][top_idx]
         seq_len += 1
     else:
-        top_idx = jnp.argmin(bo_loss[-1])
-        best_v = batched_v[0][top_idx]
+    '''
+    top_idx = jnp.argmin(bo_loss[-1])
+    best_v = batched_v[0][top_idx]
 
     return (
         best_v,

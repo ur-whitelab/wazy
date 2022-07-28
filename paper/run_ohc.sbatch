@@ -3,7 +3,7 @@
 #################### Debug jobs ####################
 #SBATCH -p awhite
 #SBATCH -t 3-00:00:00
-#SBATCH --mem=100GB 
+#SBATCH --mem=100GB
 #SBATCH -C A100
 #SBATCH --gres=gpu:1
 
@@ -27,3 +27,4 @@ conda activate prettyB
 #################################################
 
 python /scratch/zyang43/ALP-Design/paper/e2e_ohc.py
+python /scratch/zyang43/ALP-Design/paper/task1.py
