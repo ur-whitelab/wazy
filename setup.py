@@ -15,7 +15,7 @@ setup(
     packages=["alpdesign"],
     install_requires=[
         "jax",
-        "dm-haiku==0.0.6",
+        "dm-haiku",
         "optax",
         "numpy",
         "jax-unirep@git+https://github.com/ElArkk/jax-unirep.git",

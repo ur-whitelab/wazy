@@ -15,7 +15,6 @@ from .utils import resample
 @dataclass
 class EnsembleBlockConfig:
     shape: tuple = (
-        #256,
         128,
         64,
         2,
@@ -40,6 +39,7 @@ class AlgConfig:
     bo_lr: float = 1e-2
     bo_xi: float = 1e-1
     bo_batch_size: int = 8
+    bo_varlength: bool = False
     global_norm: float = 1
 
 
@@ -57,44 +57,7 @@ class SingleBlock(hk.Module):
                 x = hk.dropout(keys[idx], self.config.dropout, x)
             if idx < len(self.config.shape) - 1:
                 x = jax.nn.swish(x)
-                # if idx > 0:
-                # x = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True)(x)
         return x
-
-
-class BiLSTM(hk.Module):
-    def __init__(self, output_size, name=None):
-        super().__init__(name=name)
-        self.output_size = output_size
-
-    def __call__(self, x):  # batch size X sequence length X embedding dim
-        batch_size = x.shape[0]
-        fwd_core = hk.LSTM(16)
-        bwd_core = hk.LSTM(16)
-        x = hk.BatchApply(hk.Linear(64), num_dims=1)(x)
-        x = jax.nn.relu(x)
-        fwd_outs, fwd_state = hk.dynamic_unroll(
-            fwd_core,
-            x,
-            fwd_core.initial_state(batch_size),
-            reverse=False,
-            time_major=False,
-        )
-        # bwd_outs, bwd_state = hk.dynamic_unroll(bwd_core, jnp.flip(x, axis=-2), bwd_core.initial_state(batch_size), time_major=False)
-        bwd_outs, bwd_state = hk.dynamic_unroll(
-            bwd_core,
-            x,
-            bwd_core.initial_state(batch_size),
-            reverse=True,
-            time_major=False,
-        )
-        outs = jnp.take(jnp.concatenate(
-            [fwd_outs, bwd_outs], axis=-1), -1, axis=-2)
-        outs = hk.BatchApply(hk.Linear(64), num_dims=1)(outs)
-        outs = jax.nn.relu(outs)
-        outs = hk.BatchApply(hk.Linear(16), num_dims=1)(outs)
-        outs = jax.nn.relu(outs)
-        return hk.BatchApply(hk.Linear(self.output_size), num_dims=1)(outs)
 
 
 class EnsembleBlock(hk.Module):
@@ -106,9 +69,7 @@ class EnsembleBlock(hk.Module):
     def __call__(self, x, training):
         out = jnp.array(
             [
-                # BiLSTM(2)(x[i])
                 SingleBlock(self.config)(x[i], training=training)
-                # hk.nets.MLP(self.config.shape)(x[i])
                 for i in range(self.config.model_number)
             ]
         )
@@ -137,13 +98,11 @@ def _deep_ensemble_loss(params, key, forward, seqs, labels):
     out = forward(params, key, seqs)
     means = out[..., 0]
     sstds = transform_var(out[..., 1])
-    # means, sstds = out
     n_log_likelihoods = (
         0.5 * jnp.log(sstds)
         + 0.5 * jnp.divide((labels - means) ** 2, sstds)
         + 0.5 * jnp.log(2 * jnp.pi)
     )
-    # n_log_likelihoods = (labels - means) ** 2
     return jnp.sum(n_log_likelihoods)  # sum over batch and ensembles
 
 
@@ -196,7 +155,6 @@ def ensemble_train(
     if aconfig is None:
         aconfig = AlgConfig()
     opt_init, opt_update = optax.chain(
-        # optax.clip_by_global_norm(aconfig.global_norm),
         optax.scale_by_adam(
             b1=aconfig.train_adam_b1,
             b2=aconfig.train_adam_b2,
@@ -204,8 +162,6 @@ def ensemble_train(
         ),
         optax.add_decayed_weights(aconfig.weight_decay),
         optax.scale(-aconfig.train_lr),  # minus sign -- minimizing the loss
-        # optax.scale_by_schedule(optax.cosine_decay_schedule(-1e-2., 50)),
-        # optax.adam(optax.cosine_onecycle_schedule(500, aconfig.train_lr)),
     )
 
     # shape checks
@@ -234,9 +190,11 @@ def ensemble_train(
         params = forward_t.init(key, batch_seqs[0])
     opt_state = opt_init(params)
     if dual == True:
-        loss_fxn = partial(_adv_loss_func, forward_t.apply, mconfig.model_number)
+        loss_fxn = partial(_adv_loss_func, forward_t.apply,
+                           mconfig.model_number)
     else:
         loss_fxn = partial(_naive_loss, forward_t.apply)
+
     @jax.jit
     def train_step(opt_state, params, key, seq, label):
         seq, label = _shuffle(key, seq, label)
@@ -278,17 +236,17 @@ def neg_bayesian_ucb(key, f, x, Y, beta=2.0):
     ucb = mu + beta * std
     return -ucb
 
+
 def nn_score(key, f, x, Y, xi=0.01):
     joint_out = f(key, x)
     score = joint_out[0]
     return -score
 
+
 def bayes_opt(key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
     if aconfig is None:
         aconfig = AlgConfig()
     optimizer = optax.adam(aconfig.bo_lr)
-    # optimizer = optax.adam(optax.cosine_decay_schedule(1e-1, 50))
-    # optimizer = optax.adam(optax.cosine_onecycle_schedule(500, 5e-2))
     opt_state = optimizer.init(init_x)
     x = init_x
 
@@ -354,9 +312,8 @@ def alg_iter(
     g = jax.vmap(partial(call_infer, params,
                          training=False), in_axes=(None, 0))
     # do Bayes Opt and save best result only
-    batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
-    #batched_v_minus, bo_loss_minus, scores_minus = bayes_opt(bkey, g, y, minus_x, cost_fxn, aconfig)
-    #batched_v_plus, bo_loss_plus, scores_plus = bayes_opt(bkey, g, y, plus_x, cost_fxn, aconfig)
+    batched_v, bo_loss, scores = bayes_opt(
+        bkey, g, y, init_x, cost_fxn, aconfig)
     '''
     min_pos = jnp.argmin(jnp.array([jnp.min(bo_loss[-1]), jnp.min(bo_loss_minus[-1]), jnp.min(bo_loss_plus[-1])]))
     if min_pos == 1:
@@ -380,5 +337,4 @@ def alg_iter(
         params,
         train_loss,
         seq_len
-        #jnp.array(bo_loss)[..., top_idx],
     )

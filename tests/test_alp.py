@@ -198,8 +198,33 @@ class TestMLP(unittest.TestCase):
         sparams = model.seq_t.init(key, s)
         key1, key2 = jax.random.split(key)
 
-        def x0_gen(key, batch_size): return model.random_seqs(
+        def x0_gen(key, batch_size, L): return model.random_seqs(
             key1, batch_size, sparams, L)
         alpdesign.alg_iter(
             key2, self.reps, self.labels, model.train_t, model.seq_apply, c, x0_gen=x0_gen
         )
+
+
+class TestAT(unittest.TestCase):
+    def test_tell(self):
+        key = jax.random.PRNGKey(0)
+        boa = alpdesign.BOAlgorithm()
+        boa.tell(key, 'CCC', 1)
+        boa.tell(key, 'GG', 0)
+
+    def test_predict(self):
+        key = jax.random.PRNGKey(0)
+        boa = alpdesign.BOAlgorithm()
+        boa.tell(key, 'CCC', 1)
+        boa.tell(key, 'GG', 0)
+        boa.predict(key, 'FFG')
+
+    def test_ask(self):
+        key = jax.random.PRNGKey(0)
+        boa = alpdesign.BOAlgorithm()
+        boa.tell(key, 'CCC', 1)
+        boa.tell(key, 'GG', 0)
+        x, _ = boa.ask(key)
+        assert len(x) == 2
+        x, _ = boa.ask(key, 5)
+        assert len(x) == 5

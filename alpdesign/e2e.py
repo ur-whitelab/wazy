@@ -2,7 +2,7 @@ from alpdesign.mlp import NaiveBlock
 import haiku as hk
 from .mlp import EnsembleBlock
 from .seq import SeqpropBlock
-from .utils import differentiable_jax_unirep, seq2useq, transform_var
+from .utils import differentiable_jax_unirep, seq2useq, transform_var, ALPHABET
 import jax.numpy as jnp
 import jax
 
@@ -44,7 +44,7 @@ class EnsembleModel:
         def seq_forward(x, training=True):  # params is trained mlp params
             s = SeqpropBlock()(x)
             us = seq2useq(s)
-            # TODO: What does the other line do???
+            # TODO: What does the flatten line do???
             u = differentiable_jax_unirep(us)
             #u = s.flatten()
             mean, var, epi_var = model_forward(u, training=training)
@@ -71,7 +71,7 @@ class EnsembleModel:
         The params should contain the seqprop block. All others will be ignored.
         '''
         sp = self.seq_partition(params)
-        return (jax.random.normal(key, shape=(batch_size, length, 20)),
+        return (jax.random.normal(key, shape=(batch_size, length, len(ALPHABET))),
                 tree_transpose([jax.tree_map(lambda x: x, sp)
                                 for _ in range(batch_size)]))
 

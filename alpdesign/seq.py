@@ -1,7 +1,6 @@
 from functools import partial  # for use with vmap
 import jax
 import jax.numpy as jnp
-from jax.experimental import optimizers
 from .utils import *
 import haiku as hk
 

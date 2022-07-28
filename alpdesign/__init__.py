@@ -23,3 +23,4 @@ from .utils import (
     resample
 )
 from .e2e import EnsembleModel, build_naive_e2e
+from .asktell import BOAlgorithm
