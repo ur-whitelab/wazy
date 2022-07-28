@@ -9,14 +9,13 @@ import jax
 
 def model_reduce(out):
     mu = jnp.mean(out[..., 0], axis=0)
-    var = jnp.mean(transform_var(
-        out[..., 1]) + out[..., 0] ** 2, axis=0) - mu ** 2
+    var = jnp.mean(transform_var(out[..., 1]) + out[..., 0] ** 2, axis=0) - mu ** 2
     epi_var = jnp.std(out[..., 0], axis=0) ** 2
     return mu, var, epi_var
 
 
 def tree_transpose(list_of_trees):
-    '''Convert a list of trees of identical structure into a single tree of arrays.'''
+    """Convert a list of trees of identical structure into a single tree of arrays."""
     return jax.tree_multimap(lambda *xs: jnp.array(xs), *list_of_trees)
 
 
@@ -29,8 +28,7 @@ class EnsembleModel:
         def model_forward(x, training=False):
             x_dim = tuple([1 for i in range(x.ndim)])
             s = jnp.tile(x, (config.model_number, *x_dim))
-            mean, var, epi_var = model_reduce(
-                full_model_forward(s, training=training))
+            mean, var, epi_var = model_reduce(full_model_forward(s, training=training))
             return mean, var, epi_var
 
         def model_uncertainty_eval(x, training=False):
@@ -46,8 +44,9 @@ class EnsembleModel:
             us = seq2useq(s)
             # TODO: What does the flatten line do???
             u = differentiable_jax_unirep(us)
-            #u = s.flatten()
+            # u = s.flatten()
             mean, var, epi_var = model_forward(u, training=training)
+            # We only use epistemic uncertainty, since this is used in BO
             return mean, epi_var
 
         # transform functions
@@ -57,23 +56,24 @@ class EnsembleModel:
         self.var_t = hk.transform(model_uncertainty_eval)
 
     def seq_apply(self, params, key, x, training=False):
-        '''Apply the seqprop model by merging the sequence and trainable parameters'''
+        """Apply the seqprop model by merging the sequence and trainable parameters"""
         mp = hk.data_structures.merge(params, x[1])
         return self.seq_t.apply(mp, key, x[0], training=training)
 
     def seq_partition(self, params):
-        '''Extract the seqprop parameters from the parameters'''
-        return hk.data_structures.partition(lambda m, *_: 'seqprop' in m, params)[0]
+        """Extract the seqprop parameters from the parameters"""
+        return hk.data_structures.partition(lambda m, *_: "seqprop" in m, params)[0]
 
     def random_seqs(self, key, batch_size, params, length):
-        '''Generate a batch of tuples of sequences and seqprop r,b parameters
+        """Generate a batch of tuples of sequences and seqprop r,b parameters
 
         The params should contain the seqprop block. All others will be ignored.
-        '''
+        """
         sp = self.seq_partition(params)
-        return (jax.random.normal(key, shape=(batch_size, length, len(ALPHABET))),
-                tree_transpose([jax.tree_map(lambda x: x, sp)
-                                for _ in range(batch_size)]))
+        return (
+            jax.random.normal(key, shape=(batch_size, length, len(ALPHABET))),
+            tree_transpose([jax.tree_map(lambda x: x, sp) for _ in range(batch_size)]),
+        )
 
 
 def build_naive_e2e():

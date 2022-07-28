@@ -20,7 +20,7 @@ from .utils import (
     seq2useq,
     decode_useq,
     differentiable_jax_unirep,
-    resample
+    resample,
 )
 from .e2e import EnsembleModel, build_naive_e2e
 from .asktell import BOAlgorithm

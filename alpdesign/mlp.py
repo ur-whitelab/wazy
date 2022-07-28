@@ -7,9 +7,11 @@ import haiku as hk
 import jax.scipy.stats.norm as norm
 import optax
 from jax.experimental import optimizers
+import haiku as hk
 from dataclasses import dataclass
 from .seq import *
 from .utils import resample
+from typing import *
 
 
 @dataclass
@@ -135,23 +137,34 @@ def _shuffle(key, a, b):
 def _fill_to_batch(x, y, key, batch_size):
     if len(y) >= batch_size:
         return x, y
-    i = jax.random.choice(key, jnp.arange(
-        len(y)), shape=(batch_size,), replace=True)
+    i = jax.random.choice(key, jnp.arange(len(y)), shape=(batch_size,), replace=True)
     x = x[i, ...]
     y = y[i, ...]
     return x, y
 
 
 def ensemble_train(
-    key,
-    forward_t,
-    mconfig,
-    seqs,
-    labels,
-    params=None,
+    key: jax.random.PRNGKey,
+    forward_t: hk.Transformed,
+    mconfig: EnsembleBlockConfig,
+    seqs: Union[np.ndarray, jnp.ndarray],
+    labels: Union[np.ndarray, jnp.ndarray],
+    params: hk.Params = None,
     aconfig: AlgConfig = None,
-    dual=True
-):
+    dual: bool = True,
+) -> Tuple[hk.Params, jnp.ndarray]:
+    """
+    Train the ensemble model
+
+    :param key: PRNG key
+    :param forward_t: forward haiku transform
+    :param mconfig: model config
+    :param seqs: sequence data (featurized)
+    :param labels: label data
+    :param params: initial parameters
+    :param aconfig: algorithm config
+    :param dual: if True, model outputs aleatoric uncertainty
+    """
     if aconfig is None:
         aconfig = AlgConfig()
     opt_init, opt_update = optax.chain(
@@ -179,8 +192,7 @@ def ensemble_train(
         labels, (N, mconfig.model_number), nclasses=aconfig.train_resampled_classes
     )
     batch_seqs = seqs[idx, ...].reshape(
-        batch_num, mconfig.model_number, aconfig.train_batch_size, *
-        seqs.shape[1:]
+        batch_num, mconfig.model_number, aconfig.train_batch_size, *seqs.shape[1:]
     )
     batch_labels = labels[idx, ...].reshape(
         batch_num, mconfig.model_number, aconfig.train_batch_size
@@ -190,8 +202,7 @@ def ensemble_train(
         params = forward_t.init(key, batch_seqs[0])
     opt_state = opt_init(params)
     if dual == True:
-        loss_fxn = partial(_adv_loss_func, forward_t.apply,
-                           mconfig.model_number)
+        loss_fxn = partial(_adv_loss_func, forward_t.apply, mconfig.model_number)
     else:
         loss_fxn = partial(_naive_loss, forward_t.apply)
 
@@ -219,7 +230,13 @@ def ensemble_train(
     return (params, losses)
 
 
-def neg_bayesian_ei(key, f, x, Y, xi=0.01):
+def neg_bayesian_ei(
+    key: jax.random.PRNGKey,
+    f: callable,
+    x: jnp.ndarray,
+    Y: jnp.ndarray,
+    xi: float = 0.01,
+) -> jnp.ndarray:
     joint_out = f(key, x)
     mu = joint_out[0]
     std = jnp.sqrt(joint_out[1])
@@ -229,7 +246,13 @@ def neg_bayesian_ei(key, f, x, Y, xi=0.01):
     return -((mu - best - xi) * norm.cdf(z) + std * norm.pdf(z))
 
 
-def neg_bayesian_ucb(key, f, x, Y, beta=2.0):
+def neg_bayesian_ucb(
+    key: jax.random.PRNGKey,
+    f: callable,
+    x: jnp.ndarray,
+    Y: jnp.ndarray,
+    beta: float = 2.0,
+) -> jnp.ndarray:
     joint_out = f(key, x)
     mu = joint_out[0]
     std = jnp.sqrt(joint_out[1])
@@ -243,7 +266,9 @@ def nn_score(key, f, x, Y, xi=0.01):
     return -score
 
 
-def bayes_opt(key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
+def bayes_opt(
+    key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None
+):
     if aconfig is None:
         aconfig = AlgConfig()
     optimizer = optax.adam(aconfig.bo_lr)
@@ -256,8 +281,7 @@ def bayes_opt(key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConf
     @jax.jit
     def step(x, opt_state, key):
         loss = cost_fxn(key, f, x, labels, aconfig.bo_xi)
-        g = jax.grad(reduced_cost_fxn, 2)(
-            key, f, x, labels, aconfig.bo_xi)
+        g = jax.grad(reduced_cost_fxn, 2)(key, f, x, labels, aconfig.bo_xi)
 
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
@@ -293,14 +317,13 @@ def alg_iter(
         tkey, train_t, mconfig, x, y, params=start_params, aconfig=aconfig, dual=dual
     )
     if x0_gen is None:
-        init_x = jax.random.normal(xkey, shape=(
-            aconfig.bo_batch_size, *x[0].shape))
+        init_x = jax.random.normal(xkey, shape=(aconfig.bo_batch_size, *x[0].shape))
         minus_x = init_x
         plus_x = init_x
     else:
         init_x = x0_gen(xkey, aconfig.bo_batch_size, seq_len)
-        minus_x = x0_gen(xkey, aconfig.bo_batch_size, seq_len-1)
-        plus_x = x0_gen(xkey, aconfig.bo_batch_size, seq_len+1)
+        minus_x = x0_gen(xkey, aconfig.bo_batch_size, seq_len - 1)
+        plus_x = x0_gen(xkey, aconfig.bo_batch_size, seq_len + 1)
 
     # package params, since we're no longer training
     # sometimes inference may be function directly,
@@ -309,12 +332,10 @@ def alg_iter(
         call_infer = infer_t.apply
     except AttributeError:
         call_infer = infer_t
-    g = jax.vmap(partial(call_infer, params,
-                         training=False), in_axes=(None, 0))
+    g = jax.vmap(partial(call_infer, params, training=False), in_axes=(None, 0))
     # do Bayes Opt and save best result only
-    batched_v, bo_loss, scores = bayes_opt(
-        bkey, g, y, init_x, cost_fxn, aconfig)
-    '''
+    batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
+    """
     min_pos = jnp.argmin(jnp.array([jnp.min(bo_loss[-1]), jnp.min(bo_loss_minus[-1]), jnp.min(bo_loss_plus[-1])]))
     if min_pos == 1:
         top_idx = top_idx_minus = jnp.argmin(bo_loss_minus[-1])
@@ -327,14 +348,8 @@ def alg_iter(
         best_v = batched_v_plus[0][top_idx]
         seq_len += 1
     else:
-    '''
+    """
     top_idx = jnp.argmin(bo_loss[-1])
     best_v = batched_v[0][top_idx]
 
-    return (
-        best_v,
-        batched_v,
-        params,
-        train_loss,
-        seq_len
-    )
+    return (best_v, batched_v, params, train_loss, seq_len)

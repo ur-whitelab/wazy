@@ -101,8 +101,7 @@ class TestMLP(unittest.TestCase):
         model.infer_t.apply(params, key, self.reps)
         model.var_t.apply(params, key, self.reps)
 
-        s = jax.random.normal(key, shape=(
-            10, 20))
+        s = jax.random.normal(key, shape=(10, 20))
         sparams = model.seq_t.init(key, s)
         model.seq_t.apply(sparams, key, s)
 
@@ -119,8 +118,9 @@ class TestMLP(unittest.TestCase):
         @jax.jit
         def loss(x):
             return jnp.sum(model.seq_apply(p, key, (x, sp))[0])
+
         g = jax.grad(loss)(s)
-        jax.tree_util.tree_reduce(lambda s, x: s + jnp.sum(x**2), g, 0) > 0
+        jax.tree_util.tree_reduce(lambda s, x: s + jnp.sum(x ** 2), g, 0) > 0
 
     def test_train(self):
         key = jax.random.PRNGKey(0)
@@ -142,8 +142,7 @@ class TestMLP(unittest.TestCase):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
         model = alpdesign.EnsembleModel(c)
-        params, losses = alpdesign.ensemble_train(
-            key, model.train_t, c, reps, labels)
+        params, losses = alpdesign.ensemble_train(key, model.train_t, c, reps, labels)
         forward = functools.partial(model.infer_t.apply, params, key)
 
         for xi in x:
@@ -162,10 +161,8 @@ class TestMLP(unittest.TestCase):
         s = jax.random.normal(key, shape=(slength, 20))
         sparams = model.seq_t.init(key, s)
         x0 = model.random_seqs(key, 4, sparams, 8)
-        g = jax.vmap(functools.partial(
-            model.seq_apply, params), in_axes=(None, 0))
-        out = alpdesign.bayes_opt(
-            key, g, self.labels, init_x=x0)
+        g = jax.vmap(functools.partial(model.seq_apply, params), in_axes=(None, 0))
+        out = alpdesign.bayes_opt(key, g, self.labels, init_x=x0)
 
     def test_bayes_opt(self):
         key = jax.random.PRNGKey(0)
@@ -185,9 +182,7 @@ class TestMLP(unittest.TestCase):
         key = jax.random.PRNGKey(0)
         c = alpdesign.EnsembleBlockConfig()
         model = alpdesign.EnsembleModel(c)
-        alpdesign.alg_iter(
-            key, self.reps, self.labels, model.train_t, model.infer_t, c
-        )
+        alpdesign.alg_iter(key, self.reps, self.labels, model.train_t, model.infer_t, c)
 
     def test_alg_iter_seq(self):
         key = jax.random.PRNGKey(0)
@@ -198,10 +193,17 @@ class TestMLP(unittest.TestCase):
         sparams = model.seq_t.init(key, s)
         key1, key2 = jax.random.split(key)
 
-        def x0_gen(key, batch_size, L): return model.random_seqs(
-            key1, batch_size, sparams, L)
+        def x0_gen(key, batch_size, L):
+            return model.random_seqs(key1, batch_size, sparams, L)
+
         alpdesign.alg_iter(
-            key2, self.reps, self.labels, model.train_t, model.seq_apply, c, x0_gen=x0_gen
+            key2,
+            self.reps,
+            self.labels,
+            model.train_t,
+            model.seq_apply,
+            c,
+            x0_gen=x0_gen,
         )
 
 
@@ -209,21 +211,21 @@ class TestAT(unittest.TestCase):
     def test_tell(self):
         key = jax.random.PRNGKey(0)
         boa = alpdesign.BOAlgorithm()
-        boa.tell(key, 'CCC', 1)
-        boa.tell(key, 'GG', 0)
+        boa.tell(key, "CCC", 1)
+        boa.tell(key, "GG", 0)
 
     def test_predict(self):
         key = jax.random.PRNGKey(0)
         boa = alpdesign.BOAlgorithm()
-        boa.tell(key, 'CCC', 1)
-        boa.tell(key, 'GG', 0)
-        boa.predict(key, 'FFG')
+        boa.tell(key, "CCC", 1)
+        boa.tell(key, "GG", 0)
+        boa.predict(key, "FFG")
 
     def test_ask(self):
         key = jax.random.PRNGKey(0)
         boa = alpdesign.BOAlgorithm()
-        boa.tell(key, 'CCC', 1)
-        boa.tell(key, 'GG', 0)
+        boa.tell(key, "CCC", 1)
+        boa.tell(key, "GG", 0)
         x, _ = boa.ask(key)
         assert len(x) == 2
         x, _ = boa.ask(key, 5)
