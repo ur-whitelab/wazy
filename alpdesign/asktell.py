@@ -74,7 +74,7 @@ class BOAlgorithm:
         top_idx = jnp.argmin(bo_loss[-1])
         best_v = batched_v[0][top_idx]
         # sample max across logits
-        seq = decode_seq(best_v)
+        seq = ''.join(decode_seq(best_v))
         return seq, bo_loss[-1][top_idx]
 
     def _init(self, seq, label, key):

@@ -27,7 +27,7 @@ boa.tell(key, "GAAG", 3.1)
 Now we can predict on new values. This will return both a predicted label and its uncertainty.
 
 ```py
-boa.predict(key, "GAAG")
+boa.predict(key, "GAAG" )
 ```
 
 Then we can use Bayesian optimization to predict which sequence to try next.
