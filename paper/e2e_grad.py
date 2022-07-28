@@ -6,10 +6,10 @@ import functools
 import pickle
 from operator import add
 import matplotlib as mpl
-from alpdesign.utils import *
-from alpdesign.mlp import *
+from wazy.utils import *
+from wazy.mlp import *
 from jax_unirep import get_reps
-import alpdesign
+import wazy
 import os
 import random
 
@@ -67,7 +67,7 @@ def blosum(seq1, seq2):
 
 target_seq = "TARGETPEPTIDE"
 key = jax.random.PRNGKey(0)
-c = alpdesign.EnsembleBlockConfig()
+c = wazy.EnsembleBlockConfig()
 aconfig = AlgConfig()
 c.shape = (
     128,
@@ -82,7 +82,7 @@ aconfig.train_lr = 1e-4
 aconfig.b0_xi = 0.1
 aconfig.bo_batch_size = 8
 aconfig.train_resampled_classes = 10
-model = alpdesign.EnsembleModel(c)
+model = wazy.EnsembleModel(c)
 
 with open("../10kseqs.txt") as f:
     readfile = f.readlines()
@@ -99,7 +99,7 @@ def get_blosum_labels(seqs):
 
 
 target_seq = "TARGETPEPTIDE"
-oh_vec = alpdesign.encode_seq(list(target_seq))
+oh_vec = wazy.encode_seq(list(target_seq))
 oh_unirep = oh_vec.flatten()
 seqs = [random.choice(random_seqs)]
 
@@ -125,25 +125,25 @@ def naive_loop(key, reps, labels, params, idx):
     def x0_gen(key, batch_size):
         return model.random_seqs(key, batch_size, sparams, 13)
 
-    best_v, batched_v, scores, params, train_loss, bo_loss = alpdesign.alg_iter(
+    best_v, batched_v, scores, params, train_loss, bo_loss = wazy.alg_iter(
         key2,
         reps,
         labels,
         model.train_t,
         model.seq_apply,
         c,
-        cost_fxn=alpdesign.neg_bayesian_ei,
+        cost_fxn=wazy.neg_bayesian_ei,
         dual=False,
         aconfig=aconfig,
         x0_gen=x0_gen,
     )
 
-    s = alpdesign.decode_seq(best_v)
+    s = wazy.decode_seq(best_v)
     vs = []
     yvs = []
 
     for v in batched_v[0]:
-        decode_v = alpdesign.decode_seq(v)
+        decode_v = wazy.decode_seq(v)
         vs.append(decode_v)
         yvs.append(blosum(target_seq, decode_v))
 

@@ -6,10 +6,10 @@ import functools
 import pickle
 from operator import add
 import matplotlib as mpl
-from alpdesign.utils import *
-from alpdesign.mlp import *
+from wazy.utils import *
+from wazy.mlp import *
 from jax_unirep import get_reps
-import alpdesign
+import wazy
 import os
 import tensorflow as tf
 import urllib
@@ -113,7 +113,7 @@ AA_list = [
 ]
 
 key = jax.random.PRNGKey(0)
-c = alpdesign.EnsembleBlockConfig()
+c = wazy.EnsembleBlockConfig()
 aconfig = AlgConfig()
 c.shape = (
     128,
@@ -128,7 +128,7 @@ aconfig.train_lr = 1e-4
 aconfig.b0_xi = 2.0
 aconfig.bo_batch_size = 8
 aconfig.train_resampled_classes = 10
-model = alpdesign.EnsembleModel(c)
+model = wazy.EnsembleModel(c)
 
 with open("../10kseqs.txt") as f:
     readfile = f.readlines()
@@ -154,7 +154,7 @@ def loop(key, reps, labels, params, idx, seq_len):
         sparams = model.seq_t.init(key, s)
         return model.random_seqs(key, batch_size, sparams, seq_len)
 
-    best_v, batched_v, params, train_loss, seq_len = alpdesign.alg_iter(
+    best_v, batched_v, params, train_loss, seq_len = wazy.alg_iter(
         key2,
         reps,
         labels,
@@ -162,12 +162,12 @@ def loop(key, reps, labels, params, idx, seq_len):
         model.seq_apply,
         c,
         seq_len=seq_len,
-        cost_fxn=alpdesign.neg_bayesian_ucb,
+        cost_fxn=wazy.neg_bayesian_ucb,
         aconfig=aconfig,
         x0_gen=x0_gen,
     )
 
-    s = alpdesign.decode_seq(best_v)
+    s = wazy.decode_seq(best_v)
 
     reps = np.concatenate((reps, get_reps([s])[0]))
     yhat = model.infer_t.apply(params, key, get_reps([s])[0])

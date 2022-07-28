@@ -2,17 +2,17 @@ import os
 from glob import glob
 from setuptools import setup
 
-exec(open("alpdesign/version.py").read())
+exec(open("wazy/version.py").read())
 
 setup(
-    name="alpdesign",
+    name="wazy",
     version=__version__,
-    description="Active Learning Peptide",
+    description="Pretrained Bayesian Optimization of Sequences",
     author="Ziyue Yang, Andrew White",
     author_email="andrew.white@rochester.edu",
     url="http://thewhitelab.org/Software",
     license="MIT",
-    packages=["alpdesign"],
+    packages=["wazy"],
     install_requires=[
         "jax",
         "dm-haiku",

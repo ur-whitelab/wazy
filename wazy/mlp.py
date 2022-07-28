@@ -1,6 +1,6 @@
 from functools import partial
 from typing import Callable
-from alpdesign.seq import SeqpropBlock  # for use with vmap
+from wazy.seq import SeqpropBlock  # for use with vmap
 import jax
 import jax.numpy as jnp
 import haiku as hk
@@ -260,10 +260,16 @@ def neg_bayesian_ucb(
     return -ucb
 
 
-def nn_score(key, f, x, Y, xi=0.01):
+def neg_bayesian_max(
+    key: jax.random.PRNGKey,
+    f: callable,
+    x: jnp.ndarray,
+    Y: jnp.ndarray,
+    beta: float = 2.0,
+) -> jnp.ndarray:
     joint_out = f(key, x)
-    score = joint_out[0]
-    return -score
+    mu = joint_out[0]
+    return -mu
 
 
 def bayes_opt(

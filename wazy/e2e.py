@@ -1,4 +1,4 @@
-from alpdesign.mlp import NaiveBlock
+from wazy.mlp import NaiveBlock
 import haiku as hk
 from .mlp import EnsembleBlock
 from .seq import SeqpropBlock

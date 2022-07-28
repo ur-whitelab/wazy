@@ -10,7 +10,6 @@ from .mlp import (
     alg_iter,
     neg_bayesian_ei,
     neg_bayesian_ucb,
-    nn_score,
     AlgConfig,
 )
 from .seq import SeqpropBlock

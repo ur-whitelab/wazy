@@ -3,13 +3,15 @@ import numpy as np
 from functools import partial
 import jax
 from jax_unirep import get_reps
-from alpdesign.utils import ALPHABET
+from wazy.utils import ALPHABET
 from .mlp import (
     EnsembleBlockConfig,
     AlgConfig,
     ensemble_train,
     bayes_opt,
     neg_bayesian_ei,
+    neg_bayesian_ucb,
+    neg_bayesian_max,
 )
 from .utils import ALPHABET, decode_seq
 from .e2e import EnsembleModel
@@ -55,11 +57,20 @@ class BOAlgorithm:
         x = get_reps([seq])[0][0]
         return self.model.infer_t.apply(self.params, key, x, training=False)
 
-    def ask(self, key, length=None):
+    def ask(self, key, aq_fxn="ucb", length=None):
         if not self._ready:
             raise Exception("Must call tell once before ask")
         if length is None:
             length = len(self.seqs[-1])
+        if aq_fxn == "ucb":
+            aq = neg_bayesian_ucb
+        elif aq_fxn == "ei":
+            aq = neg_bayesian_ei
+        elif aq_fxn == "max":
+            aq = neg_bayesian_max
+        else:
+            raise Exception("Unknown aq_fxn")
+
         self._maybe_train(key)
         # set-up initial sequence(s)
         s = jax.random.normal(key, shape=(length, len(ALPHABET)))
@@ -74,13 +85,13 @@ class BOAlgorithm:
         # do Bayes Opt and save best result only
         key, _ = jax.random.split(key)
         batched_v, bo_loss, scores = bayes_opt(
-            key, g, np.array(self.labels), x0, neg_bayesian_ei, self.aconfig
+            key, g, np.array(self.labels), x0, aq, self.aconfig
         )
         top_idx = jnp.argmin(bo_loss[-1])
         best_v = batched_v[0][top_idx]
         # sample max across logits
         seq = "".join(decode_seq(best_v))
-        return seq, bo_loss[-1][top_idx]
+        return seq, -bo_loss[-1][top_idx]
 
     def _init(self, seq, label, key):
         self._ready = True

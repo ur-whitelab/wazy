@@ -1,10 +1,10 @@
 from dataclasses import astuple
-from alpdesign import seq
+from wazy import seq
 from operator import xor
-from alpdesign.utils import ALPHABET
+from wazy.utils import ALPHABET
 from unittest import case
 import unittest
-import alpdesign
+import wazy
 import numpy as np
 import jax_unirep
 import haiku as hk
@@ -16,7 +16,7 @@ import functools
 class TestSeq(unittest.TestCase):
     def test_seqprop(self):
         def forward(x):
-            return alpdesign.SeqpropBlock()(x)
+            return wazy.SeqpropBlock()(x)
 
         key1, key2 = jax.random.split(jax.random.PRNGKey(0), 2)
         forward = hk.transform(forward)
@@ -38,25 +38,25 @@ class TestSeq(unittest.TestCase):
 class TestUtils(unittest.TestCase):
     def test_encoding(self):
         s = "RRNDREW"
-        es = alpdesign.encode_seq(s)
-        assert "".join(alpdesign.decode_seq(es)) == s
+        es = wazy.encode_seq(s)
+        assert "".join(wazy.decode_seq(es)) == s
 
     def test_2uni(self):
         s = "RRNNFRDDSAADREW"
-        es = alpdesign.encode_seq(s)
-        us = alpdesign.seq2useq(es)
-        assert s == "".join(alpdesign.decode_useq(us))
+        es = wazy.encode_seq(s)
+        us = wazy.seq2useq(es)
+        assert s == "".join(wazy.decode_useq(us))
 
     def test_resample(self):
         y = np.random.randn(10)
-        idx = alpdesign.resample(y, 5)
+        idx = wazy.resample(y, 5)
         assert idx.shape == (5,)
 
-        idx = alpdesign.resample(y, (3, 5))
+        idx = wazy.resample(y, (3, 5))
         assert idx.shape == (3, 5)
 
         y = np.random.randn(20, 3)
-        idx = alpdesign.resample(y, (3, 10))
+        idx = wazy.resample(y, (3, 10))
         assert idx.shape == (3, 10)
 
 
@@ -93,8 +93,8 @@ class TestMLP(unittest.TestCase):
 
     def test_mlp(self):
         key = jax.random.PRNGKey(0)
-        c = alpdesign.EnsembleBlockConfig()
-        model = alpdesign.EnsembleModel(c)
+        c = wazy.EnsembleBlockConfig()
+        model = wazy.EnsembleModel(c)
         params = model.train_t.init(key, self.reps)
 
         model.train_t.apply(params, key, self.reps)
@@ -108,8 +108,8 @@ class TestMLP(unittest.TestCase):
     def test_seq_grad(self):
         s = np.random.randn(10, 20)
         key = jax.random.PRNGKey(0)
-        c = alpdesign.EnsembleBlockConfig()
-        model = alpdesign.EnsembleModel(c)
+        c = wazy.EnsembleBlockConfig()
+        model = wazy.EnsembleModel(c)
         p = model.seq_t.init(key, s)
         sp = model.seq_partition(p)
         model.seq_apply(p, key, (s, sp))
@@ -124,9 +124,9 @@ class TestMLP(unittest.TestCase):
 
     def test_train(self):
         key = jax.random.PRNGKey(0)
-        c = alpdesign.EnsembleBlockConfig()
-        model = alpdesign.EnsembleModel(c)
-        params, losses = alpdesign.ensemble_train(
+        c = wazy.EnsembleBlockConfig()
+        model = wazy.EnsembleModel(c)
+        params, losses = wazy.ensemble_train(
             key, model.train_t, c, self.reps, self.labels
         )
 
@@ -140,9 +140,9 @@ class TestMLP(unittest.TestCase):
         reps = x[np.random.randint(0, 1000, size=N)].reshape(-1, 1)
         labels = np.sin(reps)
         key = jax.random.PRNGKey(0)
-        c = alpdesign.EnsembleBlockConfig()
-        model = alpdesign.EnsembleModel(c)
-        params, losses = alpdesign.ensemble_train(key, model.train_t, c, reps, labels)
+        c = wazy.EnsembleBlockConfig()
+        model = wazy.EnsembleModel(c)
+        params, losses = wazy.ensemble_train(key, model.train_t, c, reps, labels)
         forward = functools.partial(model.infer_t.apply, params, key)
 
         for xi in x:
@@ -151,9 +151,9 @@ class TestMLP(unittest.TestCase):
 
     def test_bayes_seq_opt(self):
         key = jax.random.PRNGKey(0)
-        c = alpdesign.EnsembleBlockConfig()
-        model = alpdesign.EnsembleModel(c)
-        params, losses = alpdesign.ensemble_train(
+        c = wazy.EnsembleBlockConfig()
+        model = wazy.EnsembleModel(c)
+        params, losses = wazy.ensemble_train(
             key, model.train_t, c, self.reps, self.labels
         )
 
@@ -162,32 +162,32 @@ class TestMLP(unittest.TestCase):
         sparams = model.seq_t.init(key, s)
         x0 = model.random_seqs(key, 4, sparams, 8)
         g = jax.vmap(functools.partial(model.seq_apply, params), in_axes=(None, 0))
-        out = alpdesign.bayes_opt(key, g, self.labels, init_x=x0)
+        out = wazy.bayes_opt(key, g, self.labels, init_x=x0)
 
     def test_bayes_opt(self):
         key = jax.random.PRNGKey(0)
-        c = alpdesign.EnsembleBlockConfig()
-        model = alpdesign.EnsembleModel(c)
-        params, losses = alpdesign.ensemble_train(
+        c = wazy.EnsembleBlockConfig()
+        model = wazy.EnsembleModel(c)
+        params, losses = wazy.ensemble_train(
             key, model.train_t, c, self.reps, self.labels
         )
 
         forward = functools.partial(model.infer_t.apply, params)
 
         init_x = jax.random.normal(key, shape=(1, 1900))
-        out = alpdesign.bayes_opt(key, forward, self.labels, init_x)
+        out = wazy.bayes_opt(key, forward, self.labels, init_x)
         # assert jnp.squeeze(final_vec).shape == (1900,)
 
     def test_alg_iter(self):
         key = jax.random.PRNGKey(0)
-        c = alpdesign.EnsembleBlockConfig()
-        model = alpdesign.EnsembleModel(c)
-        alpdesign.alg_iter(key, self.reps, self.labels, model.train_t, model.infer_t, c)
+        c = wazy.EnsembleBlockConfig()
+        model = wazy.EnsembleModel(c)
+        wazy.alg_iter(key, self.reps, self.labels, model.train_t, model.infer_t, c)
 
     def test_alg_iter_seq(self):
         key = jax.random.PRNGKey(0)
-        c = alpdesign.EnsembleBlockConfig()
-        model = alpdesign.EnsembleModel(c)
+        c = wazy.EnsembleBlockConfig()
+        model = wazy.EnsembleModel(c)
         L = 10
         s = jax.random.normal(key, shape=(L, 20))
         sparams = model.seq_t.init(key, s)
@@ -196,7 +196,7 @@ class TestMLP(unittest.TestCase):
         def x0_gen(key, batch_size, L):
             return model.random_seqs(key1, batch_size, sparams, L)
 
-        alpdesign.alg_iter(
+        wazy.alg_iter(
             key2,
             self.reps,
             self.labels,
@@ -210,20 +210,20 @@ class TestMLP(unittest.TestCase):
 class TestAT(unittest.TestCase):
     def test_tell(self):
         key = jax.random.PRNGKey(0)
-        boa = alpdesign.BOAlgorithm()
+        boa = wazy.BOAlgorithm()
         boa.tell(key, "CCC", 1)
         boa.tell(key, "GG", 0)
 
     def test_predict(self):
         key = jax.random.PRNGKey(0)
-        boa = alpdesign.BOAlgorithm()
+        boa = wazy.BOAlgorithm()
         boa.tell(key, "CCC", 1)
         boa.tell(key, "GG", 0)
         boa.predict(key, "FFG")
 
     def test_ask(self):
         key = jax.random.PRNGKey(0)
-        boa = alpdesign.BOAlgorithm()
+        boa = wazy.BOAlgorithm()
         boa.tell(key, "CCC", 1)
         boa.tell(key, "GG", 0)
         x, _ = boa.ask(key)
