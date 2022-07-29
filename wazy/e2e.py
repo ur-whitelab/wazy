@@ -9,7 +9,7 @@ import jax
 
 def model_reduce(out):
     mu = jnp.mean(out[..., 0], axis=0)
-    var = jnp.mean(transform_var(out[..., 1]) + out[..., 0] ** 2, axis=0) - mu ** 2
+    var = jnp.mean(transform_var(out[..., 1]) + out[..., 0] ** 2, axis=0) - mu**2
     epi_var = jnp.std(out[..., 0], axis=0) ** 2
     return mu, var, epi_var
 

@@ -29,10 +29,10 @@ class TestSeq(unittest.TestCase):
         # note key is used incorrectly here for simpl
         def loss(x):
             s = forward.apply(params, key2, x)
-            return jnp.sum(x ** 2)
+            return jnp.sum(x**2)
 
         g = jax.grad(loss)(x)
-        assert np.sum(g ** 2) > 0
+        assert np.sum(g**2) > 0
 
 
 class TestUtils(unittest.TestCase):
@@ -120,7 +120,7 @@ class TestMLP(unittest.TestCase):
             return jnp.sum(model.seq_apply(p, key, (x, sp))[0])
 
         g = jax.grad(loss)(s)
-        jax.tree_util.tree_reduce(lambda s, x: s + jnp.sum(x ** 2), g, 0) > 0
+        jax.tree_util.tree_reduce(lambda s, x: s + jnp.sum(x**2), g, 0) > 0
 
     def test_train(self):
         key = jax.random.PRNGKey(0)

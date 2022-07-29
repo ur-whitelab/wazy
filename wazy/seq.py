@@ -87,7 +87,7 @@ def norm_layer(logits, r, b):
     M, N = jnp.shape(logits)[-2:]
     miu = jnp.sum(logits) / (M * N)
     std = jnp.sqrt(jnp.sum((logits - miu) ** 2) / (M * N))
-    norm_logits = (logits - miu) / (std ** 2 + epsilon)
+    norm_logits = (logits - miu) / (std**2 + epsilon)
     scaled_logits = norm_logits * r + b
     return scaled_logits
 
