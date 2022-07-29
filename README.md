@@ -35,7 +35,7 @@ boa.predict(key, "LPAH")
 # Output:
 (2.892956, 17.946255, 0.02351546)
 ```
-The accuracy is poor - $1.82\pm 12.5$. Let's now use Bayesian optimization to choose which sequence to try next:
+The accuracy is poor - $2.89\pm 17.95$. Let's now use Bayesian optimization to choose which sequence to try next:
 
 ```py
 boa.ask(key)
@@ -70,9 +70,3 @@ boa.ask(key, "max")
 # Output
 ('GRADRV', -0.9387406)
 ```
-
-## Files
-
-* `wazy` source code
-* `tests` contains unit tests. Run them with `pytest -s` after installing `pytest`
-* `paper` contains jupyter notebooks which show figures from paper. Dependencies for those are in `paper/requriements.txt`
