@@ -16,7 +16,7 @@ def model_reduce(out):
 
 def tree_transpose(list_of_trees):
     """Convert a list of trees of identical structure into a single tree of arrays."""
-    return jax.tree_multimap(lambda *xs: jnp.array(xs), *list_of_trees)
+    return jax.tree_map(lambda *xs: jnp.array(xs), *list_of_trees)
 
 
 class EnsembleModel:

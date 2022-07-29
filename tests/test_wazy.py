@@ -230,5 +230,6 @@ class TestAT(unittest.TestCase):
         boa.tell(key, "GG", 0)
         x, _ = boa.ask(key)
         assert len(x) == 2
-        x, _ = boa.ask(key, 5)
+        x, _ = boa.ask(key, length=5)
         assert len(x) == 5
+        x, _ = boa.ask(key, "max")
