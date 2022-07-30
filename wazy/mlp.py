@@ -37,10 +37,10 @@ class AlgConfig:
     train_adam_eps: float = 1e-4
     train_adv_loss_weight: float = 1e-3
     weight_decay: float = 1e-1
-    bo_epochs: int = 50
+    bo_epochs: int = 200
     bo_lr: float = 1e-2
     bo_xi: float = 1e-1
-    bo_batch_size: int = 8
+    bo_batch_size: int = 16
     bo_varlength: bool = False
     global_norm: float = 1
 
@@ -189,7 +189,10 @@ def ensemble_train(
     N = batch_num * aconfig.train_batch_size
 
     idx = resample(
-        labels, (N, mconfig.model_number), nclasses=aconfig.train_resampled_classes
+        bkey,
+        labels,
+        (N, mconfig.model_number),
+        nclasses=aconfig.train_resampled_classes,
     )
     batch_seqs = seqs[idx, ...].reshape(
         batch_num, mconfig.model_number, aconfig.train_batch_size, *seqs.shape[1:]

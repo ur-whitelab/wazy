@@ -33,40 +33,40 @@ We can predict on new values. This will return both a predicted label and its un
 ```py
 boa.predict(key, "LPAH")
 # Output:
-(2.892956, 17.946255, 0.02351546)
+(5.823452, 69.99278, 24.500998)
 ```
-The accuracy is poor - $2.89\pm 17.95$. Let's now use Bayesian optimization to choose which sequence to try next:
+The accuracy is poor - $5.8\pm 70$. Let's now use Bayesian optimization to choose which sequence to try next:
 
 ```py
 boa.ask(key)
 # Output
-'DKKA', -2.1462271
+('DAAA', 6.9735065)
 ```
 The first value is the sequence to try next. The second is an indicator in how valuable (value of acquisition function) it finds that sequence. Now we can tell it the value:
 
 ```py
-boa.tell(key, "DKKA", 1)
+boa.tell(key, "DAAA", 3)
 ```
 
 We can also choose the sequence length:
 ```py
 boa.ask(key, length=6)
 # Output
-'DVVSAW', -2.0747144
+('DAAATA', 5.676821)
 ```
 
 We can try our new prediction to see if it improved.
 
 ```py
-boa.tell(key, "DVVSAW", 1)
+boa.tell(key, "DAAATA", 4)
 boa.predict(key, "LPAH")
 # Output
-(1.5619717, 5.745885, 0.20795089)
+(3.318892, 83.437546, 52.114296)
 ```
 Which is indeed closer to the true answer of 1. Finally, we can ask for the best sequence:
 
 ```py
 boa.ask(key, "max")
 # Output
-('GRADRV', -0.9387406)
+('DAAAAA', 4.0490355)
 ```

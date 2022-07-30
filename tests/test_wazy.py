@@ -48,15 +48,16 @@ class TestUtils(unittest.TestCase):
         assert s == "".join(wazy.decode_useq(us))
 
     def test_resample(self):
+        key = jax.random.PRNGKey(0)
         y = np.random.randn(10)
-        idx = wazy.resample(y, 5)
+        idx = wazy.resample(key, y, 5)
         assert idx.shape == (5,)
 
-        idx = wazy.resample(y, (3, 5))
+        idx = wazy.resample(key, y, (3, 5))
         assert idx.shape == (3, 5)
 
         y = np.random.randn(20, 3)
-        idx = wazy.resample(y, (3, 10))
+        idx = wazy.resample(key, y, (3, 10))
         assert idx.shape == (3, 10)
 
 

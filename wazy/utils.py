@@ -95,11 +95,13 @@ def differentiable_jax_unirep(ohc_seq):
     return h_avg
 
 
-def resample(y, output_shape, nclasses=10):
+def resample(key, y, output_shape, nclasses=10):
     """
     Resample the given y-vector to have a uniform classes,
     where the classes are chosen via histogramming y.
     """
+    if type(output_shape) is int:
+        output_shape = (output_shape,)
     if len(y.shape) == 1:
         # regression
         _, bins = np.histogram(y, bins=nclasses)
@@ -113,10 +115,11 @@ def resample(y, output_shape, nclasses=10):
     uc = np.unique(classes)
     nclasses = uc.shape[0]
     if nclasses == 1:
-        return np.random.choice(np.arange(y.shape[0]), size=output_shape)
+        return jax.random.choice(key, np.arange(y.shape[0]), shape=output_shape)
     idx = [np.where(classes == uc[i])[0] for i in range(nclasses)]
-    c = np.random.choice(np.arange(nclasses), size=output_shape)
-    f = np.vectorize(lambda i: np.random.choice(idx[i]))
+    c = jax.random.choice(key, np.arange(nclasses), shape=output_shape)
+    keys = jax.random.split(key, nclasses)
+    f = np.vectorize(lambda i: jax.random.choice(keys[i], idx[i]))
     return f(c)
 
 

@@ -16,7 +16,7 @@ def model_reduce(out):
 
 def tree_transpose(list_of_trees):
     """Convert a list of trees of identical structure into a single tree of arrays."""
-    return jax.tree_map(lambda *xs: jnp.array(xs), *list_of_trees)
+    return jax.tree_util.tree_map(lambda *xs: jnp.array(xs), *list_of_trees)
 
 
 class EnsembleModel:
@@ -72,7 +72,9 @@ class EnsembleModel:
         sp = self.seq_partition(params)
         return (
             jax.random.normal(key, shape=(batch_size, length, len(ALPHABET))),
-            tree_transpose([jax.tree_map(lambda x: x, sp) for _ in range(batch_size)]),
+            tree_transpose(
+                [jax.tree_util.tree_map(lambda x: x, sp) for _ in range(batch_size)]
+            ),
         )
 
 
