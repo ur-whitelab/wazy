@@ -87,10 +87,16 @@ class BOAlgorithm:
         batched_v, bo_loss, scores = bayes_opt(
             key, g, np.array(self.labels), x0, aq, self.aconfig
         )
-        top_idx = jnp.argmin(bo_loss[-1])
-        best_v = batched_v[0][top_idx]
-        # sample max across logits
-        seq = "".join(decode_seq(best_v))
+        # find best result, not already measured
+        seq = None
+        min_idxs = jnp.argsort(jnp.squeeze(bo_loss[-1]))
+        i = 0
+        while seq is None or seq in self.seqs:
+            top_idx = min_idxs[i]
+            best_v = batched_v[0][top_idx]
+            # sample max across logits
+            seq = "".join(decode_seq(best_v))
+            i += 1
         return seq, -bo_loss[-1][top_idx]
 
     def _init(self, seq, label, key):

@@ -11,7 +11,7 @@ pip install wazy@git+https://github.com/ur-whitelab/wazy
 ## Quickstart
 You can use an ask/tell style interface to design a peptide.
 
-We can tell a few examples of sequences we know and their scalar labels. Let's try a simple example where the label is the number of alanines. We'll start by importing and building a `BOAlgorithm` class.
+We can tell a few examples of sequences we know and their scalar labels. Let's try a simple example where the label is the number of alanines. We'll start by importing and building a `BOAlgorithm` class. *In this example, I re-use the same key for simplicity.*
 
 ```py
 import wazy
@@ -40,12 +40,12 @@ The accuracy is poor - $5.8\pm 70$. Let's now use Bayesian optimization to choos
 ```py
 boa.ask(key)
 # Output
-('DAAA', 6.9735065)
+('DAAV', 6.901945)
 ```
 The first value is the sequence to try next. The second is an indicator in how valuable (value of acquisition function) it finds that sequence. Now we can tell it the value:
 
 ```py
-boa.tell(key, "DAAA", 3)
+boa.tell(key, "DAAV", 2)
 ```
 
 We can also choose the sequence length:
@@ -61,12 +61,13 @@ We can try our new prediction to see if it improved.
 boa.tell(key, "DAAATA", 4)
 boa.predict(key, "LPAH")
 # Output
-(3.318892, 83.437546, 52.114296)
+(2.0458677, 13.694655, 1.0933837)
 ```
+
 Which is indeed closer to the true answer of 1. Finally, we can ask for the best sequence:
 
 ```py
-boa.ask(key, "max")
+boa.ask(key, "max", length=5)
 # Output
-('DAAAAA', 4.0490355)
+('DAAAA', 3.8262398)
 ```
