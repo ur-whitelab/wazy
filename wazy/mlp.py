@@ -291,15 +291,14 @@ def bayes_opt(
     def step(x, opt_state, key):
         loss = cost_fxn(key, f, x, labels, aconfig.bo_xi)
         g = jax.grad(reduced_cost_fxn, 2)(key, f, x, labels, aconfig.bo_xi)
-
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
         return x, opt_state, loss
 
     losses = []
+    keys = jax.random.split(key, num=aconfig.bo_epochs)
     for step_idx in range(aconfig.bo_epochs):
-        key, _ = jax.random.split(key, num=2)
-        x, opt_state, loss = step(x, opt_state, key)
+        x, opt_state, loss = step(x, opt_state, keys[step_idx])
         losses.append(loss)
     scores = f(key, x)
     return x, losses, scores
