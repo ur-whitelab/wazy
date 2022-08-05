@@ -13,7 +13,7 @@ from .mlp import (
     neg_bayesian_ucb,
     neg_bayesian_max,
 )
-from .utils import ALPHABET, decode_seq
+from .utils import ALPHABET, decode_seq, encode_seq
 from .e2e import EnsembleModel
 
 
@@ -74,9 +74,21 @@ class BOAlgorithm:
         self._maybe_train(key)
         # set-up initial sequence(s)
         s = jax.random.normal(key, shape=(length, len(ALPHABET)))
+        # try to add max sequence, if available
+        start_seq = None
+        if len(self.seqs) > 0:
+            sorder = np.argsort(self.labels)[::-1]
+            for i in sorder:
+                seq = self.seqs[i]
+                if len(seq) == length:
+                    start_seq = encode_seq(seq)
+                    break
+
         sparams = self.model.seq_t.init(key, s)
         key, _ = jax.random.split(key)
-        x0 = self.model.random_seqs(key, self.aconfig.bo_batch_size, sparams, length)
+        x0 = self.model.random_seqs(
+            key, self.aconfig.bo_batch_size, sparams, length, start_seq
+        )
         # make callable black-box function
         g = jax.vmap(
             partial(self.model.seq_apply, self.params, training=False),

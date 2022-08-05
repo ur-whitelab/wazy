@@ -64,14 +64,17 @@ class EnsembleModel:
         """Extract the seqprop parameters from the parameters"""
         return hk.data_structures.partition(lambda m, *_: "seqprop" in m, params)[0]
 
-    def random_seqs(self, key, batch_size, params, length):
+    def random_seqs(self, key, batch_size, params, length, start_seq=None):
         """Generate a batch of tuples of sequences and seqprop r,b parameters
 
         The params should contain the seqprop block. All others will be ignored.
         """
+        if start_seq is None:
+            start_seq = jnp.zeros((length, len(ALPHABET)))
         sp = self.seq_partition(params)
         return (
-            jax.random.normal(key, shape=(batch_size, length, len(ALPHABET))),
+            start_seq
+            + jax.random.normal(key, shape=(batch_size, length, len(ALPHABET))),
             tree_transpose(
                 [jax.tree_util.tree_map(lambda x: x, sp) for _ in range(batch_size)]
             ),
