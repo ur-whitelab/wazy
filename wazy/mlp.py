@@ -31,7 +31,7 @@ class AlgConfig:
     train_batch_size: int = 8
     train_resampled_data_size: int = 8
     train_resampled_classes: int = 10
-    train_lr: float = 1e-2
+    train_lr: float = 1e-4
     train_adam_b1: float = 0.8
     train_adam_b2: float = 0.9
     train_adam_eps: float = 1e-4
