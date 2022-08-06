@@ -18,7 +18,7 @@ from typing import *
 class EnsembleBlockConfig:
     shape: tuple = (
         128,
-        64,
+        32,
         2,
     )
     model_number: int = 5

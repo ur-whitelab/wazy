@@ -150,7 +150,7 @@ class TestMLP(unittest.TestCase):
         for xi in x:
             v = forward(xi[np.newaxis])
             count += abs(v[0] - np.sin(xi)) > 2 * np.sqrt(v[1])
-        assert count < len(x) * (1 - 0.95)
+        assert count < len(x) * (1 - 0.90)
 
     def test_bayes_seq_opt(self):
         key = jax.random.PRNGKey(0)
