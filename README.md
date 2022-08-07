@@ -5,7 +5,7 @@ Pretrained Bayesian Optimization of Amino Acid Sequences
 ## installing
 
 ```bash
-pip install wazy@git+https://github.com/ur-whitelab/wazy
+pip install wazy
 ```
 
 ## Quickstart
