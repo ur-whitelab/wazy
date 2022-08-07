@@ -22,7 +22,7 @@ setup(
         "dm-haiku",
         "optax",
         "numpy",
-        "jax-unirep@git+https://github.com/ElArkk/jax-unirep.git",
+        "jax-unirep",
     ],
     test_suite="tests",
     zip_safe=True,
