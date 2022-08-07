@@ -41,10 +41,11 @@ class EnsembleModel:
 
         def seq_forward(x, training=True):  # params is trained mlp params
             s = SeqpropBlock()(x)
-            us = seq2useq(s)
-            # TODO: What does the flatten line do???
-            u = differentiable_jax_unirep(us)
-            # u = s.flatten()
+            if config.pretrained:
+                us = seq2useq(s)
+                u = differentiable_jax_unirep(us)
+            else:
+                u = s.flatten()
             mean, var, epi_var = model_forward(u, training=training)
             # We only use epistemic uncertainty, since this is used in BO
             return mean, epi_var

@@ -28,12 +28,18 @@ class BOAlgorithm:
         self._ready = False
         self._trained = 0
 
+    def _get_reps(self, seq):
+        if self.mconfig.pretrained:
+            return get_reps([seq])[0][0]
+        else:
+            return encode_seq(seq).flatten()
+
     def tell(self, key, seq, label):
         if not self._ready:
             key, _ = jax.random.split(key)
             self._init(seq, label, key)
         self.seqs.append(seq)
-        self.reps.append(get_reps([seq])[0][0])
+        self.reps.append(self._get_reps(seq))
         self.labels.append(label)
 
     def _maybe_train(self, key):
@@ -54,7 +60,7 @@ class BOAlgorithm:
             raise Exception("Must call tell once before predict")
         self._maybe_train(key)
         key = jax.random.split(key)[0]
-        x = get_reps([seq])[0][0]
+        x = self._get_reps(seq)
         return self.model.infer_t.apply(self.params, key, x, training=False)
 
     def ask(self, key, aq_fxn="ucb", length=None):

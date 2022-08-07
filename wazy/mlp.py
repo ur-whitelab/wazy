@@ -23,6 +23,7 @@ class EnsembleBlockConfig:
     )
     model_number: int = 5
     dropout: float = 0.2
+    pretrained: bool = True
 
 
 @dataclass

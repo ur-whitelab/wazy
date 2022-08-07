@@ -11,7 +11,7 @@ pip install wazy@git+https://github.com/ur-whitelab/wazy
 ## Quickstart
 You can use an ask/tell style interface to design a peptide.
 
-We can tell a few examples of sequences we know and their scalar labels. Let's try a simple example where the label is the number of alanines. We'll start by importing and building a `BOAlgorithm` class. *In this example, I re-use the same key for simplicity.*
+We can tell a few examples of sequences we know and their scalar labels. Let's try a simple example where the label is the number of alanines. You'll also want your labels to vary from about -5 to 5. We'll start by importing and building a `BOAlgorithm` class. *In this example, I re-use the same key for simplicity.*
 
 ```py
 import wazy

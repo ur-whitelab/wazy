@@ -234,3 +234,11 @@ class TestAT(unittest.TestCase):
         x, _ = boa.ask(key, length=5)
         assert len(x) == 5
         x, _ = boa.ask(key, "max")
+
+    def test_ask_nounirep(self):
+        key = jax.random.PRNGKey(0)
+        c = wazy.EnsembleBlockConfig(pretrained=False)
+        boa = wazy.BOAlgorithm(model_config=c)
+        boa.tell(key, "CCC", 1)
+        boa.tell(key, "EEE", 0)
+        x, _ = boa.ask(key)
