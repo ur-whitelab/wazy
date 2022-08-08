@@ -76,3 +76,19 @@ boa.ask(key, "max", length=5)
 # Output
 ('DAAAA', 3.8262398)
 ```
+
+### Batching
+
+You can increase the number of returned sequences by using the `batch_ask`, which uses an ad-hoc regret minimization strategy to spread out the proposed sequences:
+
+```py
+boa.batch_ask(key, N=3)
+# returns 3 seqs
+```
+
+and you can add a multiplier to batch sequences (no overhead), but they may be similar
+
+```py
+boa.batch_ask(key, N=3, return_seqs = 10)
+# returns 30 seqs
+```

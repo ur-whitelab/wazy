@@ -63,7 +63,7 @@ class BOAlgorithm:
         x = self._get_reps(seq)
         return self.model.infer_t.apply(self.params, key, x, training=False)
 
-    def ask(self, key, aq_fxn="ucb", length=None):
+    def ask(self, key, aq_fxn="ucb", length=None, return_seqs=1):
         if not self._ready:
             raise Exception("Must call tell once before ask")
         if length is None:
@@ -108,14 +108,51 @@ class BOAlgorithm:
         # find best result, not already measured
         seq = None
         min_idxs = jnp.argsort(jnp.squeeze(bo_loss[-1]))
-        i = 0
-        while seq is None or seq in self.seqs:
-            top_idx = min_idxs[i]
-            best_v = batched_v[0][top_idx]
-            # sample max across logits
-            seq = "".join(decode_seq(best_v))
-            i += 1
-        return seq, -bo_loss[-1][top_idx]
+        out_seq = ["".join(decode_seq(batched_v[0][i])) for i in min_idxs]
+        out_loss = [bo_loss[-1][i] for i in min_idxs if out_seq[i] not in self.seqs]
+        out_seq = [o for o in out_seq if o not in self.seqs]
+        if return_seqs == 1:
+            return out_seq[0], out_loss[0]
+        return out_seq[:return_seqs], out_loss[:return_seqs]
+
+    def batch_ask(self, key, N, aq_fxn="ucb", lengths=None, return_seqs=1):
+        """Batch asking iteratively asking and telling min value
+        :param key: :class:`jax.random.PRNGKey` for PRNG
+        :param N: number of rounds of BO/training
+        :param aq_fxn: acquisition function "ucb", "ei", "max"
+        :param lengths: list of lengths of sequences to ask for
+        :param return_seqs: number of sequences to return per round
+        :return: list of sequences, list of losses. Number returned is N*return_seqs.
+            May be less than N*return_seqs if duplicates are proposed.
+        """
+        if lengths is None:
+            lengths = [None] * N
+        if len(lengths) != N:
+            raise Exception("Number of lengths must be same length as N")
+        split = len(self.reps)
+        out_s, out_v = [], []
+        count = 0
+        for i in range(N):
+            s, v = self.ask(
+                key, aq_fxn, lengths[i], return_seqs=self.aconfig.bo_batch_size
+            )
+            # make sure to not propose same one which we've seen before
+            v = [vi for vi, si in zip(v, s) if si not in out_s]
+            s = [si for si in s if si not in out_s]
+            # make sure not to propose same one twice
+            keep = [True for ni, si in enumerate(s) if si not in s[:ni]]
+            s = [si for si, ki in zip(s, keep) if ki]
+            v = [vi for vi, ki in zip(v, keep) if ki]
+            out_s.extend(s[:return_seqs])
+            out_v.extend(v[:return_seqs])
+            count += len(s)
+            for j in range(len(s)):
+                self.tell(None, s[j], min(self.labels))
+        # pop off the sequences we've added
+        self.seqs = self.seqs[:split]
+        self.labels = self.labels[:split]
+        self.reps = self.reps[:split]
+        return out_s, out_v
 
     def _init(self, seq, label, key):
         self._ready = True
