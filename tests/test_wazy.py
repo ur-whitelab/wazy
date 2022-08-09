@@ -213,20 +213,20 @@ class TestMLP(unittest.TestCase):
 class TestAT(unittest.TestCase):
     def test_tell(self):
         key = jax.random.PRNGKey(0)
-        boa = wazy.BOAlgorithm()
+        boa = wazy.BOAlgorithm(alg_config=wazy.AlgConfig(bo_epochs=10))
         boa.tell(key, "CCC", 1)
         boa.tell(key, "GG", 0)
 
     def test_predict(self):
         key = jax.random.PRNGKey(0)
-        boa = wazy.BOAlgorithm()
+        boa = wazy.BOAlgorithm(alg_config=wazy.AlgConfig(bo_epochs=10))
         boa.tell(key, "CCC", 1)
         boa.tell(key, "GG", 0)
         boa.predict(key, "FFG")
 
     def test_ask(self):
         key = jax.random.PRNGKey(0)
-        boa = wazy.BOAlgorithm()
+        boa = wazy.BOAlgorithm(alg_config=wazy.AlgConfig(bo_epochs=10))
         boa.tell(key, "CCC", 1)
         boa.tell(key, "GG", 0)
         x, _ = boa.ask(key)
@@ -234,11 +234,24 @@ class TestAT(unittest.TestCase):
         x, _ = boa.ask(key, length=5)
         assert len(x) == 5
         x, _ = boa.ask(key, "max")
+        x, v = boa.ask(key, return_seqs=4)
+        assert len(x) == 4
+        assert len(v) == 4
 
     def test_ask_nounirep(self):
         key = jax.random.PRNGKey(0)
         c = wazy.EnsembleBlockConfig(pretrained=False)
-        boa = wazy.BOAlgorithm(model_config=c)
+        boa = wazy.BOAlgorithm(alg_config=wazy.AlgConfig(bo_epochs=10), model_config=c)
         boa.tell(key, "CCC", 1)
         boa.tell(key, "EEE", 0)
         x, _ = boa.ask(key)
+
+    def batch_ask(self):
+        key = jax.random.PRNGKey(0)
+        boa = wazy.BOAlgorithm(alg_config=wazy.AlgConfig(bo_epochs=10))
+        boa.tell(key, "CCC", 1)
+        boa.tell(key, "EEE", 0)
+        x, _ = boa.batch_ask(key, N=2, lengths=[3, 2], return_seqs=4)
+        assert len(x) == 2 * 4
+        # make sure no dups
+        assert len(set(x)) == len(x)
