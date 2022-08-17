@@ -6,7 +6,6 @@ import jax.numpy as jnp
 import haiku as hk
 import jax.scipy.stats.norm as norm
 import optax
-from jax.experimental import optimizers
 import haiku as hk
 from dataclasses import dataclass
 from .seq import *
