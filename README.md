@@ -1,8 +1,13 @@
 # wazy
 
+Pretrained Bayesian Optimization of Amino Acid Sequences
+
+## Colab Usage
+
+Click the button below to use the algorithm in Google Colab
+
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ur-whitelab/wazy/blob/master/colab/Wazy.ipynb)
 
-Pretrained Bayesian Optimization of Amino Acid Sequences
 
 ## installing
 
