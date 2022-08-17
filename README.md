@@ -94,3 +94,19 @@ and you can add a multiplier to batch sequences (no overhead), but they may be s
 boa.batch_ask(key, N=3, return_seqs = 10)
 # returns 30 seqs
 ```
+
+## Citation
+
+Please cite [Yang et. al.](https://www.biorxiv.org/content/10.1101/2022.08.05.502972v1.abstract)
+
+```bibtex
+@article{yang2022now,
+  title={Now What Sequence? Pre-trained Ensembles for Bayesian Optimization of Protein Sequences},
+  author={Yang, Ziyue and Milas, Katarina A and White, Andrew D},
+  journal={bioRxiv},
+  year={2022},
+  publisher={Cold Spring Harbor Laboratory}
+}
+
+```
+
