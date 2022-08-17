@@ -152,7 +152,7 @@ class BOAlgorithm:
         self.seqs = self.seqs[:split]
         self.labels = self.labels[:split]
         self.reps = self.reps[:split]
-        self._trained = 0 # trigger re-training
+        self._trained = 0  # trigger re-training
         return out_s, out_v
 
     def _init(self, seq, label, key):
