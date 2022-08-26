@@ -300,8 +300,7 @@ def bayes_opt(
     for step_idx in range(aconfig.bo_epochs):
         x, opt_state, loss = step(x, opt_state, keys[step_idx])
         losses.append(loss)
-    scores = f(key, x)
-    return x, losses, scores
+    return x, losses, keys
 
 
 def alg_iter(
@@ -342,7 +341,7 @@ def alg_iter(
         call_infer = infer_t
     g = jax.vmap(partial(call_infer, params, training=False), in_axes=(None, 0))
     # do Bayes Opt and save best result only
-    batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
+    batched_v, bo_loss, _ = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
     """
     min_pos = jnp.argmin(jnp.array([jnp.min(bo_loss[-1]), jnp.min(bo_loss_minus[-1]), jnp.min(bo_loss_plus[-1])]))
     if min_pos == 1:

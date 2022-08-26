@@ -40,7 +40,7 @@ class EnsembleModel:
             return epistemic, aleatoric  # for each x[i]
 
         def seq_forward(x, training=True):  # params is trained mlp params
-            s = SeqpropBlock()(x)
+            s = seq_only(x)
             if config.pretrained:
                 us = seq2useq(s)
                 u = differentiable_jax_unirep(us)
@@ -50,11 +50,16 @@ class EnsembleModel:
             # We only use epistemic uncertainty, since this is used in BO
             return mean, epi_var
 
+        def seq_only(x):
+            s = SeqpropBlock()(x)
+            return s
+
         # transform functions
         self.infer_t = hk.transform(model_forward)
         self.train_t = hk.transform(full_model_forward)
         self.seq_t = hk.transform(seq_forward)
         self.var_t = hk.transform(model_uncertainty_eval)
+        self.seq_only_t = hk.transform(seq_only)
 
     def seq_apply(self, params, key, x, training=False):
         """Apply the seqprop model by merging the sequence and trainable parameters"""

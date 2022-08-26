@@ -102,13 +102,21 @@ class BOAlgorithm:
         )
         # do Bayes Opt and save best result only
         key, _ = jax.random.split(key)
-        batched_v, bo_loss, scores = bayes_opt(
+        batched_v, bo_loss, bo_keys = bayes_opt(
             key, g, np.array(self.labels), x0, aq, self.aconfig
         )
         # find best result, not already measured
         seq = None
         min_idxs = jnp.argsort(jnp.squeeze(bo_loss[-1]))
-        out_seq = ["".join(decode_seq(batched_v[0][i])) for i in min_idxs]
+        # call forward with same key, which gives same seq
+        out_seq = [
+            "".join(
+                decode_seq(
+                    self.model.seq_only_t.apply(self.params, bo_keys[i], batched_v[i])
+                )
+            )
+            for i in min_idxs
+        ]
         out_loss = [bo_loss[-1][i] for i in min_idxs if out_seq[i] not in self.seqs]
         out_seq = [o for o in out_seq if o not in self.seqs]
         if return_seqs == 1:
