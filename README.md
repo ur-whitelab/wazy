@@ -2,12 +2,17 @@
 
 Pretrained Bayesian Optimization of Amino Acid Sequences
 
-## Colab Usage
+## Colab
 
 Click the button below to use the algorithm in Google Colab
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ur-whitelab/wazy/blob/master/colab/Wazy.ipynb)
 
+### Colab Peptide Binder
+
+To use AlphaFold with Wazy to design peptides that bind to specific proteins, click the button below.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ur-whitelab/wazy/blob/master/colab/WazyAlphaFold2.ipynb)
 
 ## installing
 
