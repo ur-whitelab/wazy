@@ -7,11 +7,13 @@ from wazy.utils import ALPHABET
 from .mlp import (
     EnsembleBlockConfig,
     AlgConfig,
-    ensemble_train,
-    bayes_opt,
+    exec_bayes_opt,
+    exec_ensemble_train,
     neg_bayesian_ei,
     neg_bayesian_ucb,
     neg_bayesian_max,
+    setup_bayes_opt,
+    setup_ensemble_train,
 )
 from .utils import ALPHABET, decode_seq, encode_seq
 from .e2e import EnsembleModel
@@ -27,6 +29,8 @@ class BOAlgorithm:
         self.mconfig = model_config
         self._ready = False
         self._trained = 0
+        self._train_step = None
+        self._bo_step = None
 
     def _get_reps(self, seq):
         if self.mconfig.pretrained:
@@ -44,13 +48,18 @@ class BOAlgorithm:
 
     def _maybe_train(self, key):
         if self._trained < len(self.labels):
-            self.params, train_loss = ensemble_train(
+            if self._train_step is None:
+                self._train_step = setup_ensemble_train(
+                    self.model.train_t, self.mconfig, self.aconfig
+                )
+            self.params, train_loss = exec_ensemble_train(
                 key,
                 self.model.train_t,
                 self.mconfig,
                 np.array(self.reps),
                 np.array(self.labels),
                 aconfig=self.aconfig,
+                train_step=self._train_step,
             )
             self.train_loss = train_loss
             self._trained = len(self.labels)
@@ -102,8 +111,10 @@ class BOAlgorithm:
         )
         # do Bayes Opt and save best result only
         key, _ = jax.random.split(key)
-        batched_v, bo_loss, scores = bayes_opt(
-            key, g, np.array(self.labels), x0, aq, self.aconfig
+        if self._bo_step is None:
+            self._bo_step = setup_bayes_opt(g, aq, self.aconfig)
+        batched_v, bo_loss, scores = exec_bayes_opt(
+            key, g, np.array(self.labels), x0, self.aconfig, self._bo_step
         )
         # find best result, not already measured
         seq = None
