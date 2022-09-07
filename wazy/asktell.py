@@ -56,8 +56,8 @@ class BOAlgorithm:
                 key,
                 self.model.train_t,
                 self.mconfig,
-                np.array(self.reps),
-                np.array(self.labels),
+                np.array(self.reps, dtype=float),
+                np.array(self.labels, dtype=float),
                 aconfig=self.aconfig,
                 train_step=self._train_step,
             )
@@ -114,7 +114,7 @@ class BOAlgorithm:
         if self._bo_step is None:
             self._bo_step = setup_bayes_opt(g, aq, self.aconfig)
         batched_v, bo_loss, scores = exec_bayes_opt(
-            key, g, np.array(self.labels), x0, self.aconfig, self._bo_step
+            key, g, np.array(self.labels, dtype=float), x0, self.aconfig, self._bo_step
         )
         # find best result, not already measured
         seq = None
