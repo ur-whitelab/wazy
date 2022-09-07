@@ -288,13 +288,12 @@ def neg_bayesian_ei(
     key: jax.random.PRNGKey,
     f: callable,
     x: jnp.ndarray,
-    Y: jnp.ndarray,
+    best: float,
     xi: float = 0.01,
 ) -> jnp.ndarray:
     joint_out = f(key, x)
     mu = joint_out[0]
     std = jnp.sqrt(joint_out[1])
-    best = jnp.max(Y)
     z = (mu - best - xi) / std
     # we want to maximize, so neg!
     return -((mu - best - xi) * norm.cdf(z) + std * norm.pdf(z))
@@ -304,7 +303,7 @@ def neg_bayesian_ucb(
     key: jax.random.PRNGKey,
     f: callable,
     x: jnp.ndarray,
-    Y: jnp.ndarray,
+    best: float,
     beta: float = 2.0,
 ) -> jnp.ndarray:
     joint_out = f(key, x)
@@ -318,7 +317,7 @@ def neg_bayesian_max(
     key: jax.random.PRNGKey,
     f: callable,
     x: jnp.ndarray,
-    Y: jnp.ndarray,
+    best: float,
     beta: float = 2.0,
 ) -> jnp.ndarray:
     joint_out = f(key, x)
@@ -326,18 +325,21 @@ def neg_bayesian_max(
     return -mu
 
 
-def setup_bayes_opt(f, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
+def setup_bayes_opt(f, labels, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
     if aconfig is None:
         aconfig = AlgConfig()
     optimizer = optax.adam(aconfig.bo_lr)
 
     # reduce it so we can take grad
     reduced_cost_fxn = lambda *args: jnp.mean(cost_fxn(*args))
+    best = np.max(labels)
 
     @jax.jit
-    def step(x, opt_state, key, labels):
-        loss = cost_fxn(key, f, x, labels, aconfig.bo_xi)
-        g = jax.grad(reduced_cost_fxn, 2)(key, f, x, labels, aconfig.bo_xi)
+    def step(x, opt_state, key):
+        # non-reduced
+        loss = cost_fxn(key, f, x, best, aconfig.bo_xi)
+        # reduced
+        g = jax.grad(reduced_cost_fxn, 2)(key, f, x, best, aconfig.bo_xi)
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
         return x, opt_state, loss
@@ -345,9 +347,7 @@ def setup_bayes_opt(f, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
     return step
 
 
-def exec_bayes_opt(
-    key, f, labels, init_x, aconfig: AlgConfig = None, step: Callable = None
-):
+def exec_bayes_opt(key, f, init_x, aconfig: AlgConfig = None, step: Callable = None):
     if aconfig is None:
         aconfig = AlgConfig()
     optimizer = optax.adam(aconfig.bo_lr)
@@ -356,7 +356,7 @@ def exec_bayes_opt(
     losses = []
     keys = jax.random.split(key, num=aconfig.bo_epochs)
     for step_idx in range(aconfig.bo_epochs):
-        x, opt_state, loss = step(x, opt_state, keys[step_idx], labels)
+        x, opt_state, loss = step(x, opt_state, keys[step_idx])
         losses.append(loss)
     scores = f(key, x)
     return x, losses, scores
@@ -365,8 +365,8 @@ def exec_bayes_opt(
 def bayes_opt(
     key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None
 ):
-    step = setup_bayes_opt(f, cost_fxn, aconfig)
-    return exec_bayes_opt(key, f, labels, init_x, aconfig, step)
+    step = setup_bayes_opt(f, labels, cost_fxn, aconfig)
+    return exec_bayes_opt(key, f, init_x, aconfig, step)
 
 
 def alg_iter(
