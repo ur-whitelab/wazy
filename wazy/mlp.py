@@ -300,7 +300,7 @@ def bayes_opt(
     for step_idx in range(aconfig.bo_epochs):
         x, opt_state, loss = step(x, opt_state, keys[step_idx])
         losses.append(loss)
-    return x, losses, keys
+    return x, losses, keys[step_idx]
 
 
 def alg_iter(

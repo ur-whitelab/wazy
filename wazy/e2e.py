@@ -66,6 +66,11 @@ class EnsembleModel:
         mp = hk.data_structures.merge(params, x[1])
         return self.seq_t.apply(mp, key, x[0], training=training)
 
+    def seq_only_apply(self, params, key, x):
+        """Apply the seqprop model by merging the sequence and trainable parameters. Only returns sequence"""
+        mp = hk.data_structures.merge(params, x[1])
+        return self.seq_only_t.apply(mp, key, x[0])
+
     def seq_partition(self, params):
         """Extract the seqprop parameters from the parameters"""
         return hk.data_structures.partition(lambda m, *_: "seqprop" in m, params)[0]

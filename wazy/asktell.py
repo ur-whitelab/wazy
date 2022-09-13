@@ -102,26 +102,24 @@ class BOAlgorithm:
         )
         # do Bayes Opt and save best result only
         key, _ = jax.random.split(key)
-        batched_v, bo_loss, bo_keys = bayes_opt(
+        batched_v, bo_loss, bo_key = bayes_opt(
             key, g, np.array(self.labels), x0, aq, self.aconfig
         )
         # find best result, not already measured
         seq = None
         min_idxs = jnp.argsort(jnp.squeeze(bo_loss[-1]))
         # call forward with same key, which gives same seq
-        out_seq = [
-            "".join(
-                decode_seq(
-                    self.model.seq_only_t.apply(self.params, bo_keys[i], batched_v[i])
-                )
+        out_seqs = [
+            "".join(decode_seq(s))
+            for s in jax.vmap(self.model.seq_only_apply, in_axes=(None, None, 0))(
+                self.params, bo_key, batched_v
             )
-            for i in min_idxs
         ]
-        out_loss = [bo_loss[-1][i] for i in min_idxs if out_seq[i] not in self.seqs]
-        out_seq = [o for o in out_seq if o not in self.seqs]
+        out_loss = [bo_loss[-1][i] for i in min_idxs if out_seqs[i] not in self.seqs]
+        out_seqs = [o for o in out_seqs if o not in self.seqs]
         if return_seqs == 1:
-            return out_seq[0], out_loss[0]
-        return out_seq[:return_seqs], out_loss[:return_seqs]
+            return out_seqs[0], out_loss[0]
+        return out_seqs[:return_seqs], out_loss[:return_seqs]
 
     def batch_ask(self, key, N, aq_fxn="ucb", lengths=None, return_seqs=1):
         """Batch asking iteratively asking and telling min value
