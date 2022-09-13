@@ -257,3 +257,10 @@ class TestAT(unittest.TestCase):
         assert len(x) == 2 * 4
         # make sure no dups
         assert len(set(x)) == len(x)
+
+    def test_overask(self):
+        key = jax.random.PRNGKey(0)
+        boa = wazy.BOAlgorithm(alg_config=wazy.AlgConfig(bo_epochs=10))
+        for a in ALPHABET:
+            boa.tell(key, a, 1)
+        x, _ = boa.ask(key)
