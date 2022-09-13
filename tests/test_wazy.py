@@ -223,6 +223,8 @@ class TestAT(unittest.TestCase):
         boa.tell(key, "CCC", 1)
         boa.tell(key, "GG", 0)
         boa.predict(key, "FFG")
+        boa.predict(key, "FGG")
+        boa.predict(key, "GGG")
 
     def test_ask(self):
         key = jax.random.PRNGKey(0)
