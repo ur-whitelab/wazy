@@ -1,3 +1,4 @@
+import warnings
 import jax.numpy as jnp
 import numpy as np
 from functools import partial
@@ -122,11 +123,20 @@ class BOAlgorithm:
         seq = None
         min_idxs = jnp.argsort(jnp.squeeze(bo_loss[-1]))
         out_seq = ["".join(decode_seq(batched_v[0][i])) for i in min_idxs]
-        out_loss = [bo_loss[-1][i] for i in min_idxs if out_seq[i] not in self.seqs]
-        out_seq = [o for o in out_seq if o not in self.seqs]
+        out_loss = [bo_loss[-1][i] for i in min_idxs]
+        filtered_out_loss = [
+            out_loss[i] for i in range(len(out_seq)) if out_seq[i] not in self.seqs
+        ]
+        filtered_out_seq = [o for o in out_seq if o not in self.seqs]
+        if len(filtered_out_seq) < return_seqs:
+            warnings.warn(
+                "Not enough unique sequences to return - returning duplicates"
+            )
+            filtered_out_seq = out_seq
+            filtered_out_loss = out_loss
         if return_seqs == 1:
-            return out_seq[0], out_loss[0]
-        return out_seq[:return_seqs], out_loss[:return_seqs]
+            return filtered_out_seq[0], filtered_out_loss[0]
+        return filtered_out_seq[:return_seqs], filtered_out_loss[:return_seqs]
 
     def batch_ask(self, key, N, aq_fxn="ucb", lengths=None, return_seqs=1):
         """Batch asking iteratively asking and telling min value
