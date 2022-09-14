@@ -160,7 +160,6 @@ class BOAlgorithm:
         batched_v, bo_loss, bo_key = exec_bayes_opt(
             key, np.array(self.labels, dtype=float), x0, self.aconfig, self._bo_step
         )
-        print(bo_loss[0], bo_loss[-1])
         # find best result, not already measured
         seq = None
         min_idxs = jnp.argsort(jnp.squeeze(bo_loss[-1]))
