@@ -81,7 +81,7 @@ class EnsembleModel:
         The params should contain the seqprop block. All others will be ignored.
         """
         if start_seq is None:
-            start_seq = jnp.zeros((length, len(ALPHABET)))
+            start_seq = jnp.zeros((length, len(ALPHABET)), dtype=jnp.float32)
         sp = self.seq_partition(params)
         return (
             start_seq
