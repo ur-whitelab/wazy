@@ -366,8 +366,8 @@ def exec_bayes_opt(
 def bayes_opt(
     key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None
 ):
-    step = setup_bayes_opt(f, labels, cost_fxn, aconfig)
-    return exec_bayes_opt(key, f, init_x, aconfig, step)
+    step = setup_bayes_opt(f, cost_fxn, aconfig)
+    return exec_bayes_opt(key, labels, init_x, aconfig, step)
 
 
 def alg_iter(

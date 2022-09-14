@@ -228,7 +228,7 @@ class TestAT(unittest.TestCase):
 
     def test_ask(self):
         key = jax.random.PRNGKey(0)
-        boa = wazy.BOAlgorithm(alg_config=wazy.AlgConfig(bo_epochs=10))
+        boa = wazy.BOAlgorithm()
         boa.tell(key, "CCC", 1)
         boa.tell(key, "GG", 0)
         x, _ = boa.ask(key)
