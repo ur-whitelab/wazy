@@ -5,7 +5,7 @@
 [![PyPI version](https://badge.fury.io/py/wazy.svg)](https://badge.fury.io/py/wazy)
 
 
-Pretrained Bayesian Optimization of Amino Acid Sequences
+Pretrained Bayesian Optimization of Amino Acid Sequences. **This is actively developed research code - things can break and the API may change. Please use caution and open an issue if things are unexpected!**
 
 ## Colab
 
