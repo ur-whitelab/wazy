@@ -48,7 +48,7 @@ class EnsembleModel:
                 u = s.flatten()
             mean, var, epi_var = model_forward(u, training=training)
             # We only use epistemic uncertainty, since this is used in BO
-            return mean, var
+            return mean, epi_var
 
         def seq_only(x):
             s = SeqpropBlock()(x)
