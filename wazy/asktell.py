@@ -20,7 +20,6 @@ from .utils import ALPHABET, decode_seq, encode_seq
 from .e2e import EnsembleModel
 
 
-
 class MCMCAlgorithm:
     def __init__(self, seq_length) -> None:
         self.seq_length = seq_length
@@ -52,9 +51,7 @@ class MCMCAlgorithm:
             key, key2 = jax.random.split(key)
             i = jax.random.randint(key, (), 0, self.seq_length)
             j = jax.random.randint(key2, (), 0, len(ALPHABET))
-            prop_seq = self.cur_seq[:i] + ALPHABET[j] + self.cur_seq[i + 1:]
-            # the above has a bug if i == len(self.seqs)
-
+            prop_seq = self.cur_seq[:i] + ALPHABET[j] + self.cur_seq[i + 1 :]
             if prop_seq not in self.seqs:
                 self.prop_seq = prop_seq
                 return prop_seq, 0
@@ -163,6 +160,7 @@ class BOAlgorithm:
         batched_v, bo_loss, bo_key = exec_bayes_opt(
             key, np.array(self.labels, dtype=float), x0, self.aconfig, self._bo_step
         )
+        print(bo_loss[0], bo_loss[-1])
         # find best result, not already measured
         seq = None
         min_idxs = jnp.argsort(jnp.squeeze(bo_loss[-1]))

@@ -84,11 +84,14 @@ class EnsembleModel:
             start_seq = jnp.zeros((length, len(ALPHABET)), dtype=jnp.float32)
         # pad start_seq with zeroes beyond batch 0 (shape will end up as (batch_size, length, len(ALPHABET)))
         start_seq = jnp.pad(start_seq[None], ((0, batch_size - 1), (0, 0), (0, 0)))
-        # shape is now 
+        # shape is now
         sp = self.seq_partition(params)
         return (
-            0.1 * (start_seq +
-            jax.random.normal(key, shape=(batch_size, length, len(ALPHABET)))),
+            0.1
+            * (
+                start_seq
+                + jax.random.normal(key, shape=(batch_size, length, len(ALPHABET)))
+            ),
             tree_transpose(
                 [jax.tree_util.tree_map(lambda x: x, sp) for _ in range(batch_size)]
             ),
