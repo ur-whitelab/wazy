@@ -1,5 +1,10 @@
 # wazy
 
+
+![tests](https://github.com/ur-whitelab/wazy/actions/workflows/tests.yml/badge.svg)
+[![PyPI version](https://badge.fury.io/py/wazy-infer.svg)](https://badge.fury.io/py/wazy-infer)
+
+
 Pretrained Bayesian Optimization of Amino Acid Sequences
 
 ## Colab
