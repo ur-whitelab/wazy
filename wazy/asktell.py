@@ -32,6 +32,7 @@ class BOAlgorithm:
         self._trained = 0
         self._train_step = None
         self._bo_step = None
+        self._batch_decoder = None
 
     def _get_reps(self, seq):
         if self.mconfig.pretrained:
@@ -114,21 +115,21 @@ class BOAlgorithm:
         # do Bayes Opt and save best result only
         key, _ = jax.random.split(key)
         if self._bo_step is None:
-            self._bo_step = setup_bayes_opt(
-                g, np.array(self.labels, dtype=float), aq, self.aconfig
-            )
+            self._bo_step = setup_bayes_opt(g, aq, self.aconfig)
         batched_v, bo_loss, bo_key = exec_bayes_opt(
-            key, g, x0, self.aconfig, self._bo_step
+            key, np.array(self.labels, dtype=float), x0, self.aconfig, self._bo_step
         )
         # find best result, not already measured
         seq = None
         min_idxs = jnp.argsort(jnp.squeeze(bo_loss[-1]))
         # call forward with same key, which gives same seq
+        if self._batch_decoder is None:
+            self._batch_decoder = jax.vmap(
+                self.model.seq_only_apply, in_axes=(None, None, 0)
+            )
         out_seqs = [
             "".join(decode_seq(s))
-            for s in jax.vmap(self.model.seq_only_apply, in_axes=(None, None, 0))(
-                self.params, bo_key, batched_v
-            )
+            for s in self._batch_decoder(self.params, bo_key, batched_v)
         ]
         out_loss = [bo_loss[-1][i] for i in min_idxs]
         filtered_out_loss = [
