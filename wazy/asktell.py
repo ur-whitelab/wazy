@@ -97,9 +97,10 @@ class BOAlgorithm:
             for i in sorder:
                 seq = self.seqs[i]
                 if len(seq) == length:
-                    start_seq = encode_seq(seq)
+                    start_seq = seq
                     break
-
+        if start_seq is not None:
+            start_seq = encode_seq(start_seq)
         sparams = self.model.seq_t.init(key, s)
         key, _ = jax.random.split(key)
         x0 = self.model.random_seqs(
