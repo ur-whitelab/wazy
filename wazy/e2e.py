@@ -87,7 +87,7 @@ class EnsembleModel:
         # shape is now
         sp = self.seq_partition(params)
         return (
-            0.1
+            0.01
             * (
                 start_seq
                 + jax.random.normal(key, shape=(batch_size, length, len(ALPHABET)))
