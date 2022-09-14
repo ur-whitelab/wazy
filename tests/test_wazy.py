@@ -228,17 +228,23 @@ class TestAT(unittest.TestCase):
 
     def test_ask(self):
         key = jax.random.PRNGKey(0)
-        boa = wazy.BOAlgorithm(alg_config=wazy.AlgConfig(bo_epochs=10))
+        boa = wazy.BOAlgorithm()
         boa.tell(key, "CCC", 1)
         boa.tell(key, "GG", 0)
         x, _ = boa.ask(key)
         assert len(x) == 2
         x, _ = boa.ask(key, length=5)
         assert len(x) == 5
-        x, _ = boa.ask(key, "max")
         x, v = boa.ask(key, return_seqs=4)
         assert len(x) == 4
         assert len(v) == 4
+        x1, s1 = boa.ask(key, "max")
+        # check that it is repeatable
+        key = jax.random.PRNGKey(1)
+        x2, s2 = boa.ask(key, "max")
+        print(x1, s1)
+        print(x2, s2)
+        assert x1 == x2
 
     def test_ask_nounirep(self):
         key = jax.random.PRNGKey(0)

@@ -32,6 +32,7 @@ class BOAlgorithm:
         self._trained = 0
         self._train_step = None
         self._bo_step = None
+        self._batch_decoder = None
 
     def _get_reps(self, seq):
         if self.mconfig.pretrained:
@@ -97,9 +98,10 @@ class BOAlgorithm:
             for i in sorder:
                 seq = self.seqs[i]
                 if len(seq) == length:
-                    start_seq = encode_seq(seq)
+                    start_seq = seq
                     break
-
+        if start_seq is not None:
+            start_seq = encode_seq(start_seq)
         sparams = self.model.seq_t.init(key, s)
         key, _ = jax.random.split(key)
         x0 = self.model.random_seqs(
@@ -113,30 +115,36 @@ class BOAlgorithm:
         # do Bayes Opt and save best result only
         key, _ = jax.random.split(key)
         if self._bo_step is None:
-            self._bo_step = setup_bayes_opt(
-                g, np.array(self.labels, dtype=float), aq, self.aconfig
-            )
-        batched_v, bo_loss, scores = exec_bayes_opt(
-            key, g, x0, self.aconfig, self._bo_step
+            self._bo_step = setup_bayes_opt(g, aq, self.aconfig)
+        batched_v, bo_loss, bo_key = exec_bayes_opt(
+            key, np.array(self.labels, dtype=float), x0, self.aconfig, self._bo_step
         )
         # find best result, not already measured
         seq = None
         min_idxs = jnp.argsort(jnp.squeeze(bo_loss[-1]))
-        out_seq = ["".join(decode_seq(batched_v[0][i])) for i in min_idxs]
+        # call forward with same key, which gives same seq
+        if self._batch_decoder is None:
+            self._batch_decoder = jax.vmap(
+                self.model.seq_only_apply, in_axes=(None, None, 0)
+            )
+        out_seqs = [
+            "".join(decode_seq(s))
+            for s in self._batch_decoder(self.params, bo_key, batched_v)
+        ]
         out_loss = [bo_loss[-1][i] for i in min_idxs]
         filtered_out_loss = [
-            out_loss[i] for i in range(len(out_seq)) if out_seq[i] not in self.seqs
+            out_loss[i] for i in range(len(out_seqs)) if out_seqs[i] not in self.seqs
         ]
-        filtered_out_seq = [o for o in out_seq if o not in self.seqs]
-        if len(filtered_out_seq) < return_seqs:
+        filtered_out_seqs = [o for o in out_seqs if o not in self.seqs]
+        if len(filtered_out_seqs) < return_seqs:
             warnings.warn(
                 "Not enough unique sequences to return - returning duplicates"
             )
-            filtered_out_seq = out_seq
+            filtered_out_seqs = out_seqs
             filtered_out_loss = out_loss
         if return_seqs == 1:
-            return filtered_out_seq[0], filtered_out_loss[0]
-        return filtered_out_seq[:return_seqs], filtered_out_loss[:return_seqs]
+            return filtered_out_seqs[0], filtered_out_loss[0]
+        return filtered_out_seqs[:return_seqs], filtered_out_loss[:return_seqs]
 
     def batch_ask(self, key, N, aq_fxn="ucb", lengths=None, return_seqs=1):
         """Batch asking iteratively asking and telling min value

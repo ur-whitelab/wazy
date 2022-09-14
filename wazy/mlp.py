@@ -325,17 +325,16 @@ def neg_bayesian_max(
     return -mu
 
 
-def setup_bayes_opt(f, labels, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
+def setup_bayes_opt(f, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
     if aconfig is None:
         aconfig = AlgConfig()
     optimizer = optax.adam(aconfig.bo_lr)
 
     # reduce it so we can take grad
     reduced_cost_fxn = lambda *args: jnp.mean(cost_fxn(*args))
-    best = np.max(labels)
 
     @jax.jit
-    def step(x, opt_state, key):
+    def step(x, opt_state, key, best):
         # non-reduced
         loss = cost_fxn(key, f, x, best, aconfig.bo_xi)
         # reduced
@@ -347,26 +346,28 @@ def setup_bayes_opt(f, labels, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = No
     return step
 
 
-def exec_bayes_opt(key, f, init_x, aconfig: AlgConfig = None, step: Callable = None):
+def exec_bayes_opt(
+    key, labels, init_x, aconfig: AlgConfig = None, step: Callable = None
+):
     if aconfig is None:
         aconfig = AlgConfig()
     optimizer = optax.adam(aconfig.bo_lr)
     opt_state = optimizer.init(init_x)
     x = init_x
     losses = []
+    best = np.max(labels)
     keys = jax.random.split(key, num=aconfig.bo_epochs)
     for step_idx in range(aconfig.bo_epochs):
-        x, opt_state, loss = step(x, opt_state, keys[step_idx])
+        x, opt_state, loss = step(x, opt_state, keys[step_idx], best)
         losses.append(loss)
-    scores = f(key, x)
-    return x, losses, scores
+    return x, losses, keys[step_idx]
 
 
 def bayes_opt(
     key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None
 ):
-    step = setup_bayes_opt(f, labels, cost_fxn, aconfig)
-    return exec_bayes_opt(key, f, init_x, aconfig, step)
+    step = setup_bayes_opt(f, cost_fxn, aconfig)
+    return exec_bayes_opt(key, labels, init_x, aconfig, step)
 
 
 def alg_iter(
@@ -407,7 +408,7 @@ def alg_iter(
         call_infer = infer_t
     g = jax.vmap(partial(call_infer, params, training=False), in_axes=(None, 0))
     # do Bayes Opt and save best result only
-    batched_v, bo_loss, scores = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
+    batched_v, bo_loss, _ = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
     """
     min_pos = jnp.argmin(jnp.array(
         [jnp.min(bo_loss[-1]), jnp.min(bo_loss_minus[-1]), jnp.min(bo_loss_plus[-1])]))
