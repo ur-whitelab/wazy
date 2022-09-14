@@ -1,3 +1,4 @@
+from ast import Call
 from functools import partial
 from typing import Callable
 from wazy.seq import SeqpropBlock  # for use with vmap
@@ -143,7 +144,55 @@ def _fill_to_batch(x, y, key, batch_size):
     return x, y
 
 
-def ensemble_train(
+def setup_ensemble_train(
+    forward_t: hk.Transformed,
+    mconfig: EnsembleBlockConfig,
+    aconfig: AlgConfig = None,
+    dual: bool = True,
+) -> Tuple[hk.Params, jnp.ndarray]:
+    """
+    Set-up ensemble training step
+
+    :param key: PRNG key
+    :param forward_t: forward haiku transform
+    :param mconfig: model config
+    :param seqs: sequence data (featurized)
+    :param labels: label data
+    :param params: initial parameters
+    :param aconfig: algorithm config
+    :param dual: if True, model outputs aleatoric uncertainty
+    """
+    if aconfig is None:
+        aconfig = AlgConfig()
+    opt_init, opt_update = optax.chain(
+        optax.scale_by_adam(
+            b1=aconfig.train_adam_b1,
+            b2=aconfig.train_adam_b2,
+            eps=aconfig.train_adam_eps,
+        ),
+        optax.add_decayed_weights(aconfig.weight_decay),
+        optax.scale(-aconfig.train_lr),  # minus sign -- minimizing the loss
+    )
+
+    if dual == True:
+        loss_fxn = partial(_adv_loss_func, forward_t.apply, mconfig.model_number)
+    else:
+        loss_fxn = partial(_naive_loss, forward_t.apply)
+
+    @jax.jit
+    def train_step(opt_state, params, key, seq, label):
+        seq, label = _shuffle(key, seq, label)
+        loss, grad = jax.value_and_grad(loss_fxn, 0)(
+            params, key, seq, label, aconfig.train_adv_loss_weight
+        )
+        updates, opt_state = opt_update(grad, opt_state, params)
+        params = optax.apply_updates(params, updates)
+        return opt_state, params, loss
+
+    return train_step
+
+
+def exec_ensemble_train(
     key: jax.random.PRNGKey,
     forward_t: hk.Transformed,
     mconfig: EnsembleBlockConfig,
@@ -151,7 +200,7 @@ def ensemble_train(
     labels: Union[np.ndarray, jnp.ndarray],
     params: hk.Params = None,
     aconfig: AlgConfig = None,
-    dual: bool = True,
+    train_step: Callable = None,
 ) -> Tuple[hk.Params, jnp.ndarray]:
     """
     Train the ensemble model
@@ -204,21 +253,6 @@ def ensemble_train(
     if params == None:
         params = forward_t.init(key, batch_seqs[0])
     opt_state = opt_init(params)
-    if dual == True:
-        loss_fxn = partial(_adv_loss_func, forward_t.apply, mconfig.model_number)
-    else:
-        loss_fxn = partial(_naive_loss, forward_t.apply)
-
-    @jax.jit
-    def train_step(opt_state, params, key, seq, label):
-        seq, label = _shuffle(key, seq, label)
-        loss, grad = jax.value_and_grad(loss_fxn, 0)(
-            params, key, seq, label, aconfig.train_adv_loss_weight
-        )
-        updates, opt_state = opt_update(grad, opt_state, params)
-        params = optax.apply_updates(params, updates)
-        return opt_state, params, loss
-
     losses = []
     for e in range(aconfig.train_epochs):
         train_loss = 0.0
@@ -233,17 +267,33 @@ def ensemble_train(
     return (params, losses)
 
 
+def ensemble_train(
+    key: jax.random.PRNGKey,
+    forward_t: hk.Transformed,
+    mconfig: EnsembleBlockConfig,
+    seqs: Union[np.ndarray, jnp.ndarray],
+    labels: Union[np.ndarray, jnp.ndarray],
+    params: hk.Params = None,
+    aconfig: AlgConfig = None,
+    dual: bool = True,
+    train_step: Callable = None,
+) -> Tuple[hk.Params, jnp.ndarray]:
+    step = setup_ensemble_train(forward_t, mconfig, aconfig, dual)
+    return exec_ensemble_train(
+        key, forward_t, mconfig, seqs, labels, params, aconfig, step
+    )
+
+
 def neg_bayesian_ei(
     key: jax.random.PRNGKey,
     f: callable,
     x: jnp.ndarray,
-    Y: jnp.ndarray,
+    best: float,
     xi: float = 0.01,
 ) -> jnp.ndarray:
     joint_out = f(key, x)
     mu = joint_out[0]
     std = jnp.sqrt(joint_out[1])
-    best = jnp.max(Y)
     z = (mu - best - xi) / std
     # we want to maximize, so neg!
     return -((mu - best - xi) * norm.cdf(z) + std * norm.pdf(z))
@@ -253,7 +303,7 @@ def neg_bayesian_ucb(
     key: jax.random.PRNGKey,
     f: callable,
     x: jnp.ndarray,
-    Y: jnp.ndarray,
+    best: float,
     beta: float = 2.0,
 ) -> jnp.ndarray:
     joint_out = f(key, x)
@@ -267,7 +317,7 @@ def neg_bayesian_max(
     key: jax.random.PRNGKey,
     f: callable,
     x: jnp.ndarray,
-    Y: jnp.ndarray,
+    best: float,
     beta: float = 2.0,
 ) -> jnp.ndarray:
     joint_out = f(key, x)
@@ -275,32 +325,47 @@ def neg_bayesian_max(
     return -mu
 
 
-def bayes_opt(
-    key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None
-):
+def setup_bayes_opt(f, labels, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
+    if aconfig is None:
+        aconfig = AlgConfig()
+    optimizer = optax.adam(aconfig.bo_lr)
+
+    # reduce it so we can take grad
+    reduced_cost_fxn = lambda *args: jnp.mean(cost_fxn(*args))
+    best = np.max(labels)
+
+    @jax.jit
+    def step(x, opt_state, key):
+        # non-reduced
+        loss = cost_fxn(key, f, x, best, aconfig.bo_xi)
+        # reduced
+        g = jax.grad(reduced_cost_fxn, 2)(key, f, x, best, aconfig.bo_xi)
+        updates, opt_state = optimizer.update(g, opt_state)
+        x = optax.apply_updates(x, updates)
+        return x, opt_state, loss
+
+    return step
+
+
+def exec_bayes_opt(key, f, init_x, aconfig: AlgConfig = None, step: Callable = None):
     if aconfig is None:
         aconfig = AlgConfig()
     optimizer = optax.adam(aconfig.bo_lr)
     opt_state = optimizer.init(init_x)
     x = init_x
-
-    # reduce it so we can take grad
-    reduced_cost_fxn = lambda *args: jnp.mean(cost_fxn(*args))
-
-    @jax.jit
-    def step(x, opt_state, key):
-        loss = cost_fxn(key, f, x, labels, aconfig.bo_xi)
-        g = jax.grad(reduced_cost_fxn, 2)(key, f, x, labels, aconfig.bo_xi)
-        updates, opt_state = optimizer.update(g, opt_state)
-        x = optax.apply_updates(x, updates)
-        return x, opt_state, loss
-
     losses = []
     keys = jax.random.split(key, num=aconfig.bo_epochs)
     for step_idx in range(aconfig.bo_epochs):
         x, opt_state, loss = step(x, opt_state, keys[step_idx])
         losses.append(loss)
     return x, losses, keys[step_idx]
+
+
+def bayes_opt(
+    key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None
+):
+    step = setup_bayes_opt(f, labels, cost_fxn, aconfig)
+    return exec_bayes_opt(key, f, init_x, aconfig, step)
 
 
 def alg_iter(
@@ -343,7 +408,8 @@ def alg_iter(
     # do Bayes Opt and save best result only
     batched_v, bo_loss, _ = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
     """
-    min_pos = jnp.argmin(jnp.array([jnp.min(bo_loss[-1]), jnp.min(bo_loss_minus[-1]), jnp.min(bo_loss_plus[-1])]))
+    min_pos = jnp.argmin(jnp.array(
+        [jnp.min(bo_loss[-1]), jnp.min(bo_loss_minus[-1]), jnp.min(bo_loss_plus[-1])]))
     if min_pos == 1:
         top_idx = top_idx_minus = jnp.argmin(bo_loss_minus[-1])
         best_v = batched_v_minus[0][top_idx]

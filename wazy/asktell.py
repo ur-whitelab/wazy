@@ -1,3 +1,4 @@
+import warnings
 import jax.numpy as jnp
 import numpy as np
 from functools import partial
@@ -7,11 +8,13 @@ from wazy.utils import ALPHABET
 from .mlp import (
     EnsembleBlockConfig,
     AlgConfig,
-    ensemble_train,
-    bayes_opt,
+    exec_bayes_opt,
+    exec_ensemble_train,
     neg_bayesian_ei,
     neg_bayesian_ucb,
     neg_bayesian_max,
+    setup_bayes_opt,
+    setup_ensemble_train,
 )
 from .utils import ALPHABET, decode_seq, encode_seq
 from .e2e import EnsembleModel
@@ -27,6 +30,8 @@ class BOAlgorithm:
         self.mconfig = model_config
         self._ready = False
         self._trained = 0
+        self._train_step = None
+        self._bo_step = None
 
     def _get_reps(self, seq):
         if self.mconfig.pretrained:
@@ -44,13 +49,18 @@ class BOAlgorithm:
 
     def _maybe_train(self, key):
         if self._trained < len(self.labels):
-            self.params, train_loss = ensemble_train(
+            if self._train_step is None:
+                self._train_step = setup_ensemble_train(
+                    self.model.train_t, self.mconfig, self.aconfig
+                )
+            self.params, train_loss = exec_ensemble_train(
                 key,
                 self.model.train_t,
                 self.mconfig,
-                np.array(self.reps),
-                np.array(self.labels),
+                np.array(self.reps, dtype=float),
+                np.array(self.labels, dtype=float),
                 aconfig=self.aconfig,
+                train_step=self._train_step,
             )
             self.train_loss = train_loss
             self._trained = len(self.labels)
@@ -102,8 +112,12 @@ class BOAlgorithm:
         )
         # do Bayes Opt and save best result only
         key, _ = jax.random.split(key)
-        batched_v, bo_loss, bo_key = bayes_opt(
-            key, g, np.array(self.labels), x0, aq, self.aconfig
+        if self._bo_step is None:
+            self._bo_step = setup_bayes_opt(
+                g, np.array(self.labels, dtype=float), aq, self.aconfig
+            )
+        batched_v, bo_loss, bo_key = exec_bayes_opt(
+            key, g, x0, self.aconfig, self._bo_step
         )
         # find best result, not already measured
         seq = None
@@ -115,11 +129,20 @@ class BOAlgorithm:
                 self.params, bo_key, batched_v
             )
         ]
-        out_loss = [bo_loss[-1][i] for i in min_idxs if out_seqs[i] not in self.seqs]
-        out_seqs = [o for o in out_seqs if o not in self.seqs]
+        out_loss = [bo_loss[-1][i] for i in min_idxs]
+        filtered_out_loss = [
+            out_loss[i] for i in range(len(out_seqs)) if out_seqs[i] not in self.seqs
+        ]
+        filtered_out_seqs = [o for o in out_seqs if o not in self.seqs]
+        if len(filtered_out_seqs) < return_seqs:
+            warnings.warn(
+                "Not enough unique sequences to return - returning duplicates"
+            )
+            filtered_out_seqs = out_seqs
+            filtered_out_loss = out_loss
         if return_seqs == 1:
-            return out_seqs[0], out_loss[0]
-        return out_seqs[:return_seqs], out_loss[:return_seqs]
+            return filtered_out_seqs[0], filtered_out_loss[0]
+        return filtered_out_seqs[:return_seqs], filtered_out_loss[:return_seqs]
 
     def batch_ask(self, key, N, aq_fxn="ucb", lengths=None, return_seqs=1):
         """Batch asking iteratively asking and telling min value
