@@ -20,6 +20,50 @@ from .utils import ALPHABET, decode_seq, encode_seq
 from .e2e import EnsembleModel
 
 
+
+class MCMCAlgorithm:
+    def __init__(self, seq_length) -> None:
+        self.seq_length = seq_length
+        self.seqs = []
+        self.labels = []
+        self._ready = False
+
+    def tell(self, key, seq, label):
+        self.seqs.append(seq)
+        self.labels.append(label)
+        if not self._ready:
+            self.cur_seq = seq
+            self._ready = True
+        else:
+            # check label with metroplis-hastings
+            if label > self.labels[-2]:
+                self.cur_seq = seq
+            else:
+                if jax.random.uniform(key) < jnp.exp(label - self.labels[-2]):
+                    self.cur_seq = seq
+
+    def predict(self, key, seq):
+        raise NotImplementedError()
+
+    def ask(self, key):
+        if not self._ready:
+            raise Exception("Must call tell once before ask")
+        for i in range(1000):
+            key, key2 = jax.random.split(key)
+            i = jax.random.randint(key, (), 0, self.seq_length)
+            j = jax.random.randint(key2, (), 0, len(ALPHABET))
+            prop_seq = self.cur_seq[:i] + ALPHABET[j] + self.cur_seq[i + 1:]
+            # the above has a bug if i == len(self.seqs)
+
+            if prop_seq not in self.seqs:
+                self.prop_seq = prop_seq
+                return prop_seq, 0
+        raise Exception("Could not find a new sequence")
+
+    def batch_ask(self, key, N, aq_fxn="ucb", lengths=None, return_seqs=1):
+        raise NotImplementedError()
+
+
 class BOAlgorithm:
     def __init__(self, model_config=None, alg_config=None) -> None:
         if model_config is None:
