@@ -335,12 +335,12 @@ def setup_bayes_opt(f, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
 
     @jax.jit
     def step(x, opt_state, key, best):
-        # non-reduced
-        loss = cost_fxn(key, f, x, best, aconfig.bo_xi)
         # reduced
         g = jax.grad(reduced_cost_fxn, 2)(key, f, x, best, aconfig.bo_xi)
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
+        # non-reduced
+        loss = cost_fxn(key, f, x, best, aconfig.bo_xi)
         return x, opt_state, loss
 
     return step

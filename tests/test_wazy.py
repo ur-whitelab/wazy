@@ -248,6 +248,7 @@ class TestAT(unittest.TestCase):
         print(x2, s2)
         if x1 != x2:
             print("Warning: this test still fails")
+        assert x1 == x2
 
     def test_ask_nounirep(self):
         key = jax.random.PRNGKey(0)
