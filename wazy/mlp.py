@@ -39,7 +39,7 @@ class AlgConfig:
     train_adv_loss_weight: float = 1e-3
     weight_decay: float = 1e-1
     bo_epochs: int = 200
-    bo_lr: float = 2e-1
+    bo_lr: float = 1e-2
     bo_xi: float = 2.0
     bo_batch_size: int = 16
     bo_varlength: bool = False
