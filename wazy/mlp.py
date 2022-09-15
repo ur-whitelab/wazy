@@ -40,7 +40,7 @@ class AlgConfig:
     weight_decay: float = 1e-1
     bo_epochs: int = 200
     bo_lr: float = 1e-2
-    bo_xi: float = 2.0
+    bo_xi: float = 0.1
     bo_batch_size: int = 16
     bo_varlength: bool = False
     global_norm: float = 1
@@ -325,7 +325,7 @@ def neg_bayesian_max(
     return -mu
 
 
-def setup_bayes_opt(f, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
+def setup_bayes_opt(f, cost_fxn=neg_bayesian_ucb, aconfig: AlgConfig = None):
     if aconfig is None:
         aconfig = AlgConfig()
     optimizer = optax.adam(aconfig.bo_lr)
@@ -364,7 +364,7 @@ def exec_bayes_opt(
 
 
 def bayes_opt(
-    key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None
+    key, f, labels, init_x, cost_fxn=neg_bayesian_ucb, aconfig: AlgConfig = None
 ):
     step = setup_bayes_opt(f, cost_fxn, aconfig)
     return exec_bayes_opt(key, labels, init_x, aconfig, step)
@@ -378,7 +378,7 @@ def alg_iter(
     infer_t,
     mconfig,
     seq_len=13,
-    cost_fxn=neg_bayesian_ei,
+    cost_fxn=neg_bayesian_ucb,
     dual=True,
     aconfig=None,
     x0_gen=None,
