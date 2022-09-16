@@ -40,6 +40,15 @@ def test(f, N, repeats, L, pretrain=True, key=0):
     if pretrain:
         pre_results = do_boa(f, N, repeats, L, wazy.BOAlgorithm(), key)
         print("pretrain done", np.max(pre_results))
+        pre_ei_results = do_boa(
+            f,
+            N,
+            repeats,
+            L,
+            wazy.BOAlgorithm(alg_config=wazy.AlgConfig(bo_aq_fxn="ei")),
+            key,
+        )
+        print("pretrain_ei done", np.max(pre_results))
     rand_results = do_rand(f, N, repeats, L)
     print("random done", np.max(rand_results))
 
@@ -92,6 +101,7 @@ def test(f, N, repeats, L, pretrain=True, key=0):
     plt.plot(rand_results, label="Random")
     if pretrain:
         plt.plot(pre_results, label="Pretrained")
+        plt.plot(pre_ei_results, label="Pretrained")
     plt.legend()
     plt.show()
 
@@ -106,6 +116,7 @@ def test(f, N, repeats, L, pretrain=True, key=0):
     plt.plot(curbest(rand_results), label="Random")
     if pretrain:
         plt.plot(curbest(pre_results), label="Pretrained")
+        plt.plot(pre_ei_results, label="Pretrained EI")
     plt.legend()
     plt.show()
 
