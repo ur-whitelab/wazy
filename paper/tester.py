@@ -33,13 +33,13 @@ AA_list = [
 ]
 
 
-def test(f, N, repeats, L, pretrain=False, key=0):
+def test(f, N, repeats, L, pretrain=True, key=0):
     key = jax.random.PRNGKey(key)
     np.random.seed(key)
 
     if pretrain:
         pre_results = do_boa(f, N, repeats, L, wazy.BOAlgorithm(), key)
-        print("pretrain done")
+        print("pretrain done", np.max(pre_results))
     rand_results = do_rand(f, N, repeats, L)
     print("random done", np.max(rand_results))
 

@@ -126,6 +126,9 @@ class BOAlgorithm:
             aq = neg_bayesian_ucb
         elif aq_fxn == "ei":
             aq = neg_bayesian_ei
+            if self.aconfig.bo_xi > 1:
+                warnings.warn("xi seems too high for EI acquisition function, reducing")
+                self.aconfig.bo_xi = 0.05
         elif aq_fxn == "max":
             aq = neg_bayesian_max
         else:

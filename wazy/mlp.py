@@ -40,7 +40,7 @@ class AlgConfig:
     weight_decay: float = 1e-1
     bo_epochs: int = 200
     bo_lr: float = 1e-2
-    bo_xi: float = 0.1
+    bo_xi: float = 2.0  # UCB default - turn down for EI
     bo_batch_size: int = 16
     bo_aq_fxn: str = "ucb"
     bo_varlength: bool = False
