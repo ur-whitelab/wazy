@@ -123,6 +123,28 @@ class TestMLP(unittest.TestCase):
         g = jax.grad(loss)(s)
         jax.tree_util.tree_reduce(lambda s, x: s + jnp.sum(x**2), g, 0) > 0
 
+    def test_seq_only(self):
+        """Want to make sure that using same key gives same sequence"""
+        key = jax.random.PRNGKey(0)
+        c = wazy.EnsembleBlockConfig()
+        model = wazy.EnsembleModel(c)
+        logits = np.random.normal(size=(10, 20))
+        params = model.seq_t.init(key, logits)
+        sp = model.seq_partition(params)
+        mean1, var1 = model.seq_apply(params, key, (logits, sp))
+        print(mean1, var1)
+
+        # now get out sequence
+        sampled_seq = model.seq_only_apply(params, key, (logits, sp))
+        # convert from one-hot to sequence
+        sampled_seq = wazy.decode_seq(sampled_seq)
+        # if we apply with the rep, we should get out same values
+        rep = jax_unirep.get_reps([sampled_seq])[0]
+        mean2, var2, _ = model.infer_t.apply(params, key, rep)
+        print(mean2, var2)
+        assert np.allclose(mean1, mean2)
+        assert np.allclose(var1, var2)
+
     def test_train(self):
         key = jax.random.PRNGKey(0)
         c = wazy.EnsembleBlockConfig()

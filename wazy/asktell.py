@@ -115,11 +115,13 @@ class BOAlgorithm:
         x = self._get_reps(seq)
         return self.model.infer_t.apply(self.params, key, x, training=False)
 
-    def ask(self, key, aq_fxn="ucb", length=None, return_seqs=1):
+    def ask(self, key, aq_fxn=None, length=None, return_seqs=1):
         if not self._ready:
             raise Exception("Must call tell once before ask")
         if length is None:
             length = len(self.seqs[-1])
+        if aq_fxn is None:
+            aq_fxn = self.aconfig.bo_aq_fxn
         if aq_fxn == "ucb":
             aq = neg_bayesian_ucb
         elif aq_fxn == "ei":
@@ -150,7 +152,7 @@ class BOAlgorithm:
         )
         # make callable black-box function
         g = jax.vmap(
-            partial(self.model.seq_apply, self.params, training=False),
+            partial(self.model.seq_apply, self.params),
             in_axes=(None, 0),
         )
         # do Bayes Opt and save best result only

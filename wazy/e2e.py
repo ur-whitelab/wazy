@@ -39,14 +39,14 @@ class EnsembleModel:
             aleatoric = jnp.mean(jax.nn.softplus(out[..., 1]) + 1e-6, axis=0)
             return epistemic, aleatoric  # for each x[i]
 
-        def seq_forward(x, training=True):  # params is trained mlp params
+        def seq_forward(x):  # params is trained mlp params
             s = seq_only(x)
             if config.pretrained:
                 us = seq2useq(s)
                 u = differentiable_jax_unirep(us)
             else:
                 u = s.flatten()
-            mean, var, epi_var = model_forward(u, training=training)
+            mean, var, epi_var = model_forward(u, training=False)
             # We only use epistemic uncertainty, since this is used in BO
             return mean, var
 
@@ -61,10 +61,10 @@ class EnsembleModel:
         self.var_t = hk.transform(model_uncertainty_eval)
         self.seq_only_t = hk.transform(seq_only)
 
-    def seq_apply(self, params, key, x, training=False):
+    def seq_apply(self, params, key, x):
         """Apply the seqprop model by merging the sequence and trainable parameters"""
         mp = hk.data_structures.merge(params, x[1])
-        return self.seq_t.apply(mp, key, x[0], training=training)
+        return self.seq_t.apply(mp, key, x[0])
 
     def seq_only_apply(self, params, key, x):
         """Apply the seqprop model by merging the sequence and trainable parameters. Only returns sequence"""
@@ -87,7 +87,7 @@ class EnsembleModel:
         # shape is now
         sp = self.seq_partition(params)
         return (
-            0.01
+            0.1
             * (
                 start_seq
                 + jax.random.normal(key, shape=(batch_size, length, len(ALPHABET)))

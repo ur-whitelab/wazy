@@ -42,6 +42,7 @@ class AlgConfig:
     bo_lr: float = 1e-2
     bo_xi: float = 0.1
     bo_batch_size: int = 16
+    bo_aq_fxn: str = "ucb"
     bo_varlength: bool = False
     global_norm: float = 1
 
@@ -406,7 +407,7 @@ def alg_iter(
         call_infer = infer_t.apply
     except AttributeError:
         call_infer = infer_t
-    g = jax.vmap(partial(call_infer, params, training=False), in_axes=(None, 0))
+    g = jax.vmap(partial(call_infer, params), in_axes=(None, 0))
     # do Bayes Opt and save best result only
     batched_v, bo_loss, _ = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
     """
