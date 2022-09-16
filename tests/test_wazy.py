@@ -123,6 +123,28 @@ class TestMLP(unittest.TestCase):
         g = jax.grad(loss)(s)
         jax.tree_util.tree_reduce(lambda s, x: s + jnp.sum(x**2), g, 0) > 0
 
+    def test_seq_only(self):
+        """Want to make sure that using same key gives same sequence"""
+        key = jax.random.PRNGKey(0)
+        c = wazy.EnsembleBlockConfig()
+        model = wazy.EnsembleModel(c)
+        logits = np.random.normal(size=(10, 20))
+        params = model.seq_t.init(key, logits)
+        sp = model.seq_partition(params)
+        mean1, var1 = model.seq_apply(params, key, (logits, sp))
+        print(mean1, var1)
+
+        # now get out sequence
+        sampled_seq = model.seq_only_apply(params, key, (logits, sp))
+        # convert from one-hot to sequence
+        sampled_seq = wazy.decode_seq(sampled_seq)
+        # if we apply with the rep, we should get out same values
+        rep = jax_unirep.get_reps([sampled_seq])[0]
+        mean2, var2, _ = model.infer_t.apply(params, key, rep)
+        print(mean2, var2)
+        assert np.allclose(mean1, mean2)
+        assert np.allclose(var1, var2)
+
     def test_train(self):
         key = jax.random.PRNGKey(0)
         c = wazy.EnsembleBlockConfig()
@@ -228,9 +250,11 @@ class TestAT(unittest.TestCase):
 
     def test_ask(self):
         key = jax.random.PRNGKey(0)
-        boa = wazy.BOAlgorithm()
-        boa.tell(key, "CCC", 1)
+        boa = wazy.BOAlgorithm(alg_config=wazy.AlgConfig(bo_epochs=1000))
+        boa.tell(key, "CC", 10)
         boa.tell(key, "GG", 0)
+        boa.tell(key, "AA", 0)
+        boa.tell(key, "RR", 1)
         x, _ = boa.ask(key)
         assert len(x) == 2
         x, _ = boa.ask(key, length=5)
@@ -238,13 +262,19 @@ class TestAT(unittest.TestCase):
         x, v = boa.ask(key, return_seqs=4)
         assert len(x) == 4
         assert len(v) == 4
+
+    def test_bo_converges(self):
+        key = jax.random.PRNGKey(0)
+        boa = wazy.BOAlgorithm(alg_config=wazy.AlgConfig(bo_epochs=1000))
+        boa.tell(key, "CC", 3)
+        boa.tell(key, "GG", 0)
+        boa.tell(key, "AA", 0)
+        boa.tell(key, "RR", 1)
         x1, s1 = boa.ask(key, "max")
         # check that it is repeatable
         key = jax.random.PRNGKey(1)
         x2, s2 = boa.ask(key, "max")
-        print(x1, s1)
-        print(x2, s2)
-        assert x1 == x2
+        assert np.allclose(s1, s2)
 
     def test_ask_nounirep(self):
         key = jax.random.PRNGKey(0)

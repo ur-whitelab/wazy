@@ -97,8 +97,8 @@ class SeqpropBlock(hk.Module):
         super().__init__(name="seqprop")
 
     def __call__(self, logits):
-        r = hk.get_parameter("r", shape=[], dtype=logits.dtype, init=jnp.ones)
-        b = hk.get_parameter("b", shape=[], dtype=logits.dtype, init=jnp.zeros)
+        r = hk.get_parameter("r", shape=[], dtype=jnp.float32, init=jnp.ones)
+        b = hk.get_parameter("b", shape=[], dtype=jnp.float32, init=jnp.zeros)
         norm_logits = norm_layer(logits, r, b)
         key = hk.next_rng_key()
         sampled_vec = disc_ss(key, norm_logits)

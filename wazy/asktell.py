@@ -20,6 +20,47 @@ from .utils import ALPHABET, decode_seq, encode_seq
 from .e2e import EnsembleModel
 
 
+class MCMCAlgorithm:
+    def __init__(self, seq_length) -> None:
+        self.seq_length = seq_length
+        self.seqs = []
+        self.labels = []
+        self._ready = False
+
+    def tell(self, key, seq, label):
+        self.seqs.append(seq)
+        self.labels.append(label)
+        if not self._ready:
+            self.cur_seq = seq
+            self._ready = True
+        else:
+            # check label with metroplis-hastings
+            if label > self.labels[-2]:
+                self.cur_seq = seq
+            else:
+                if jax.random.uniform(key) < jnp.exp(label - self.labels[-2]):
+                    self.cur_seq = seq
+
+    def predict(self, key, seq):
+        raise NotImplementedError()
+
+    def ask(self, key):
+        if not self._ready:
+            raise Exception("Must call tell once before ask")
+        for i in range(1000):
+            key, key2 = jax.random.split(key)
+            i = jax.random.randint(key, (), 0, self.seq_length)
+            j = jax.random.randint(key2, (), 0, len(ALPHABET))
+            prop_seq = self.cur_seq[:i] + ALPHABET[j] + self.cur_seq[i + 1 :]
+            if prop_seq not in self.seqs:
+                self.prop_seq = prop_seq
+                return prop_seq, 0
+        raise Exception("Could not find a new sequence")
+
+    def batch_ask(self, key, N, aq_fxn="ucb", lengths=None, return_seqs=1):
+        raise NotImplementedError()
+
+
 class BOAlgorithm:
     def __init__(self, model_config=None, alg_config=None) -> None:
         if model_config is None:
@@ -74,15 +115,20 @@ class BOAlgorithm:
         x = self._get_reps(seq)
         return self.model.infer_t.apply(self.params, key, x, training=False)
 
-    def ask(self, key, aq_fxn="ucb", length=None, return_seqs=1):
+    def ask(self, key, aq_fxn=None, length=None, return_seqs=1):
         if not self._ready:
             raise Exception("Must call tell once before ask")
         if length is None:
             length = len(self.seqs[-1])
+        if aq_fxn is None:
+            aq_fxn = self.aconfig.bo_aq_fxn
         if aq_fxn == "ucb":
             aq = neg_bayesian_ucb
         elif aq_fxn == "ei":
             aq = neg_bayesian_ei
+            if self.aconfig.bo_xi > 1:
+                warnings.warn("xi seems too high for EI acquisition function, reducing")
+                self.aconfig.bo_xi = 0.05
         elif aq_fxn == "max":
             aq = neg_bayesian_max
         else:
@@ -109,7 +155,7 @@ class BOAlgorithm:
         )
         # make callable black-box function
         g = jax.vmap(
-            partial(self.model.seq_apply, self.params, training=False),
+            partial(self.model.seq_apply, self.params),
             in_axes=(None, 0),
         )
         # do Bayes Opt and save best result only

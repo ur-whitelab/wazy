@@ -40,8 +40,9 @@ class AlgConfig:
     weight_decay: float = 1e-1
     bo_epochs: int = 200
     bo_lr: float = 1e-2
-    bo_xi: float = 2.0
+    bo_xi: float = 0.2
     bo_batch_size: int = 16
+    bo_aq_fxn: str = "ucb"
     bo_varlength: bool = False
     global_norm: float = 1
 
@@ -325,7 +326,7 @@ def neg_bayesian_max(
     return -mu
 
 
-def setup_bayes_opt(f, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
+def setup_bayes_opt(f, cost_fxn=neg_bayesian_ucb, aconfig: AlgConfig = None):
     if aconfig is None:
         aconfig = AlgConfig()
     optimizer = optax.adam(aconfig.bo_lr)
@@ -335,12 +336,12 @@ def setup_bayes_opt(f, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None):
 
     @jax.jit
     def step(x, opt_state, key, best):
-        # non-reduced
-        loss = cost_fxn(key, f, x, best, aconfig.bo_xi)
         # reduced
         g = jax.grad(reduced_cost_fxn, 2)(key, f, x, best, aconfig.bo_xi)
         updates, opt_state = optimizer.update(g, opt_state)
         x = optax.apply_updates(x, updates)
+        # non-reduced
+        loss = cost_fxn(key, f, x, best, aconfig.bo_xi)
         return x, opt_state, loss
 
     return step
@@ -364,7 +365,7 @@ def exec_bayes_opt(
 
 
 def bayes_opt(
-    key, f, labels, init_x, cost_fxn=neg_bayesian_ei, aconfig: AlgConfig = None
+    key, f, labels, init_x, cost_fxn=neg_bayesian_ucb, aconfig: AlgConfig = None
 ):
     step = setup_bayes_opt(f, cost_fxn, aconfig)
     return exec_bayes_opt(key, labels, init_x, aconfig, step)
@@ -378,7 +379,7 @@ def alg_iter(
     infer_t,
     mconfig,
     seq_len=13,
-    cost_fxn=neg_bayesian_ei,
+    cost_fxn=neg_bayesian_ucb,
     dual=True,
     aconfig=None,
     x0_gen=None,
@@ -406,7 +407,7 @@ def alg_iter(
         call_infer = infer_t.apply
     except AttributeError:
         call_infer = infer_t
-    g = jax.vmap(partial(call_infer, params, training=False), in_axes=(None, 0))
+    g = jax.vmap(partial(call_infer, params), in_axes=(None, 0))
     # do Bayes Opt and save best result only
     batched_v, bo_loss, _ = bayes_opt(bkey, g, y, init_x, cost_fxn, aconfig)
     """

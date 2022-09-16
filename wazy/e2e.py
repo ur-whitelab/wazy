@@ -39,16 +39,16 @@ class EnsembleModel:
             aleatoric = jnp.mean(jax.nn.softplus(out[..., 1]) + 1e-6, axis=0)
             return epistemic, aleatoric  # for each x[i]
 
-        def seq_forward(x, training=True):  # params is trained mlp params
+        def seq_forward(x):  # params is trained mlp params
             s = seq_only(x)
             if config.pretrained:
                 us = seq2useq(s)
                 u = differentiable_jax_unirep(us)
             else:
                 u = s.flatten()
-            mean, var, epi_var = model_forward(u, training=training)
+            mean, var, epi_var = model_forward(u, training=False)
             # We only use epistemic uncertainty, since this is used in BO
-            return mean, epi_var
+            return mean, var
 
         def seq_only(x):
             s = SeqpropBlock()(x)
@@ -61,10 +61,10 @@ class EnsembleModel:
         self.var_t = hk.transform(model_uncertainty_eval)
         self.seq_only_t = hk.transform(seq_only)
 
-    def seq_apply(self, params, key, x, training=False):
+    def seq_apply(self, params, key, x):
         """Apply the seqprop model by merging the sequence and trainable parameters"""
         mp = hk.data_structures.merge(params, x[1])
-        return self.seq_t.apply(mp, key, x[0], training=training)
+        return self.seq_t.apply(mp, key, x[0])
 
     def seq_only_apply(self, params, key, x):
         """Apply the seqprop model by merging the sequence and trainable parameters. Only returns sequence"""
@@ -82,10 +82,16 @@ class EnsembleModel:
         """
         if start_seq is None:
             start_seq = jnp.zeros((length, len(ALPHABET)), dtype=jnp.float32)
+        # pad start_seq with zeroes beyond batch 0 (shape will end up as (batch_size, length, len(ALPHABET)))
+        start_seq = jnp.pad(start_seq[None], ((0, batch_size - 1), (0, 0), (0, 0)))
+        # shape is now
         sp = self.seq_partition(params)
         return (
-            start_seq
-            + jax.random.normal(key, shape=(batch_size, length, len(ALPHABET))),
+            0.1
+            * (
+                start_seq
+                + jax.random.normal(key, shape=(batch_size, length, len(ALPHABET)))
+            ),
             tree_transpose(
                 [jax.tree_util.tree_map(lambda x: x, sp) for _ in range(batch_size)]
             ),
