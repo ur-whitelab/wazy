@@ -262,15 +262,19 @@ class TestAT(unittest.TestCase):
         x, v = boa.ask(key, return_seqs=4)
         assert len(x) == 4
         assert len(v) == 4
+
+    def test_bo_converges(self):
+        key = jax.random.PRNGKey(0)
+        boa = wazy.BOAlgorithm(alg_config=wazy.AlgConfig(bo_epochs=1000))
+        boa.tell(key, "CC", 3)
+        boa.tell(key, "GG", 0)
+        boa.tell(key, "AA", 0)
+        boa.tell(key, "RR", 1)
         x1, s1 = boa.ask(key, "max")
         # check that it is repeatable
         key = jax.random.PRNGKey(1)
         x2, s2 = boa.ask(key, "max")
-        print(x1, s1)
-        print(x2, s2)
-        if x1 != x2:
-            print("Warning: this test still fails")
-        assert x1 == x2
+        assert np.allclose(s1, s2)
 
     def test_ask_nounirep(self):
         key = jax.random.PRNGKey(0)
