@@ -38,7 +38,7 @@ def test(f, N, repeats, L, pretrain=False, key=0):
     np.random.seed(key)
 
     if pretrain:
-        pre_results = do_boa(f, N, repeats, wazy.BOAlgorithm(), key)
+        pre_results = do_boa(f, N, repeats, L, wazy.BOAlgorithm(), key)
         print("pretrain done")
     rand_results = do_rand(f, N, repeats, L)
     print("random done", np.max(rand_results))
