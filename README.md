@@ -94,6 +94,20 @@ boa.ask(key, "max", length=5)
 ('DAAAA', 3.8262398)
 ```
 
+### Key
+
+If you are going to use this process in a loop, be sure to split the key:
+
+
+```py
+s = "START"
+for i in range(10):
+  key, _ = jax.random.split(key)
+  boa.tell(key, s, 4)
+  s, _ = boa.ask(key, "max", length=5)
+```
+
+
 ### Batching
 
 You can increase the number of returned sequences by using the `batch_ask`, which uses an ad-hoc regret minimization strategy to spread out the proposed sequences:
