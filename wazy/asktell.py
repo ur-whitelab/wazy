@@ -210,6 +210,7 @@ class BOAlgorithm:
         out_s, out_v = [], []
         count = 0
         for i in range(N):
+            key, _ = jax.random.split(key)
             s, v = self.ask(
                 key, aq_fxn, lengths[i], return_seqs=self.aconfig.bo_batch_size
             )
