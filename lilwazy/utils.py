@@ -16,7 +16,7 @@ import jax
 from typing import *
 from functools import partial
 from dataclasses import dataclass
-
+from flax.core.frozen_dict import unfreeze
 
 ALPHABET_robust_sf = sf.get_semantic_robust_alphabet() #Get the alphabet of robut symbols
 
@@ -202,6 +202,25 @@ def differentiable_jax_unirep(ohc_seq):
     h_avg = jnp.mean(outputs, axis=1)
     return h_avg
 
+trained_model = FlaxBertModel.from_pretrained('maykcaldas/selfies-bart')
+diff_model = DiffFlaxBertModule(config)
+
+def jax_bert(tokens, trained_model, diff_model):
+    order = ['ohc'] +list(tokens.keys()) + ['position_ids']
+    tokens['ohc'] = jax.nn.one_hot(tokens['input_ids'], tokenizer.vocab_size)
+    x = dict(**tokens, position_ids = np.arange(len(token['input_ids'])))
+    x = {k: x[k] for k in order}
+    del x['input_ids']
+    params = diff_model.init(jax.random.PRNGKey(0), **x)
+    
+
+    return reps
+
+def differentiable_jax_bert(model_apply, params, input_dict):
+    #input dict {'ohc','token_type_ids','attention_mask', 'position_ids'}
+    out_f = partial(model_apply, params, token_type_ids, attention_mask, position_ids)
+    reps = out_f(input_dict['ohc']).last_hidden_state
+    return reps
 
 def resample(key, y, output_shape, nclasses=10):
     """
