@@ -2,19 +2,13 @@ import numpy as np
 import random
 import jax
 import jax.numpy as jnp
-import jax_unirep.utils as unirep
-import jax_unirep.layers as unirep_layer
 from functools import partial
 import selfies as sf
 from transformers import PreTrainedTokenizerFast, FlaxBartModel, FlaxBartForCausalLM, FlaxBertModel
 import flax.linen as nn
-import numpy as np
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.bert.modeling_flax_bert import FlaxBertEncoder, FlaxBertPooler, FlaxBaseModelOutputWithPoolingAndCrossAttentions
-import jax.numpy as jnp
-import jax
 from typing import *
-from functools import partial
 from dataclasses import dataclass
 from flax.core.frozen_dict import unfreeze
 
@@ -203,17 +197,26 @@ def differentiable_jax_unirep(ohc_seq):
     return h_avg
 
 trained_model = FlaxBertModel.from_pretrained('maykcaldas/selfies-bart')
+# insert params from trained model to diff model
 diff_model = DiffFlaxBertModule(config)
 
 def jax_bert(tokens, trained_model, diff_model):
+    # modify key order of tokens(from trained_model) to match the input order of diff_model
     order = ['ohc'] +list(tokens.keys()) + ['position_ids']
     tokens['ohc'] = jax.nn.one_hot(tokens['input_ids'], tokenizer.vocab_size)
     x = dict(**tokens, position_ids = np.arange(len(token['input_ids'])))
     x = {k: x[k] for k in order}
     del x['input_ids']
-    params = diff_model.init(jax.random.PRNGKey(0), **x)
+    diff_params = diff_model.init(jax.random.PRNGKey(0), **x)
+    diff_params = unfreeze(diff_params)
+    M, N = diff_params['params']['embeddings']['word_embeddings']['kernel'].shape
+    for i in range(M):
+        for j in range(N):
+            diff_params['params']['embeddings']['word_embeddings']['kernel'].at[i,j].set(trained_model.params['embeddings']['word_embeddings']['embedding'][i,j])
+    diff_params = freeze(diff_params)
     
-
+    out = model.apply(diff_params, x)
+    reps = out['last_hidden_state']
     return reps
 
 def differentiable_jax_bert(model_apply, params, input_dict):
