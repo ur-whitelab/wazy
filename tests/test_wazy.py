@@ -106,6 +106,7 @@ class TestMLP(unittest.TestCase):
         sparams = model.seq_t.init(key, s)
         model.seq_t.apply(sparams, key, s)
 
+    """
     def test_seq_grad(self):
         s = np.random.randn(10, 20)
         key = jax.random.PRNGKey(0)
@@ -122,6 +123,30 @@ class TestMLP(unittest.TestCase):
 
         g = jax.grad(loss)(s)
         jax.tree_util.tree_reduce(lambda s, x: s + jnp.sum(x**2), g, 0) > 0
+    """
+
+    def test_seq_grad(self):
+        s = np.random.randn(10, 20)
+        key = jax.random.PRNGKey(0)
+        c = wazy.EnsembleBlockConfig()
+        model = wazy.EnsembleModel(c)
+        p = model.seq_t.init(key, s)
+        sp = model.seq_partition(p)
+        model.seq_apply(p, key, (s, sp))
+
+        # Refactor the loss function to take all dependencies as arguments
+        def loss(model, p, key, sp, x):
+            return jnp.sum(model.seq_apply(p, key, (x, sp))[0])
+
+        # Wrap the loss function with `jax.jit` and `jax.grad`
+        jit_loss = jax.jit(loss)
+        grad_loss = jax.grad(jit_loss, argnums=4)
+
+        # Compute the gradient with the refactored function
+        g = grad_loss(model, p, key, sp, s)
+
+        # Check if the gradient is greater than 0
+        assert jax.tree_util.tree_reduce(lambda s, x: s + jnp.sum(x**2), g, 0) > 0
 
     def test_seq_only(self):
         """Want to make sure that using same key gives same sequence"""
