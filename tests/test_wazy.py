@@ -107,23 +107,24 @@ class TestMLP(unittest.TestCase):
         model.seq_t.apply(sparams, key, s)
 
     def test_seq_grad(self):
-        # s1 = np.random.randn(10, 20)
+        s1 = np.random.randn(10, 20)
         # s2 = np.random.randn(10, 20)
-        key = jax.random.PRNGKey(0)
-        s1 = jax.random.normal(key, shape=(10, 20))
-        s2 = jax.random.normal(key, shape=(10, 20))
+        key1 = jax.random.PRNGKey(0)
+        key2 = jax.random.PRNGKey(37)
+        # s1 = jax.random.normal(key, shape=(10, 20))
+        s2 = jax.random.normal(key1, shape=(10, 20))
         c = wazy.EnsembleBlockConfig()
         model = wazy.EnsembleModel(c)
-        p = model.seq_t.init(key, s1)
+        p = model.seq_t.init(key1, s1)
         sp = model.seq_partition(p)
-        model.seq_apply(p, key, (s2, sp))
+        model.seq_apply(p, key2, (s1, sp))
 
         # check gradient
         @jax.jit
-        def loss(x, key, p, sp):
-            return jnp.sum(model.seq_apply(p, key, (x, sp))[0])
+        def loss(x):
+            return jnp.sum(model.seq_apply(p, key2, (x, sp))[0])
 
-        g = jax.grad(loss)(s2, key, p, sp)
+        g = jax.grad(loss)(s2)
         jax.tree_util.tree_reduce(lambda s, x: s + jnp.sum(x**2), g, 0) > 0
 
     def test_seq_only(self):
