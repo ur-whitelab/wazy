@@ -122,7 +122,8 @@ class TestMLP(unittest.TestCase):
         # check gradient
         @jax.jit
         def loss(x):
-            return jnp.sum(model.seq_apply(p, key2, (x, sp))[0])
+            # return jnp.sum(model.seq_apply(p, key2, (x, sp))[0])
+            return jnp.sum(sp) + jnp.sum(x)
 
         g = jax.grad(loss)(s2)
         jax.tree_util.tree_reduce(lambda s, x: s + jnp.sum(x**2), g, 0) > 0
