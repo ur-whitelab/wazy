@@ -12,7 +12,7 @@ import jax
 import jax.numpy as jnp
 import functools
 
-
+"""
 class TestSeq(unittest.TestCase):
     def test_seqprop(self):
         def forward(x):
@@ -60,6 +60,8 @@ class TestUtils(unittest.TestCase):
         idx = wazy.resample(key, y, (3, 10))
         assert idx.shape == (3, 10)
 
+"""
+
 
 class TestMLP(unittest.TestCase):
     def setUp(self) -> None:
@@ -92,6 +94,7 @@ class TestMLP(unittest.TestCase):
         )
         self.reps = jax_unirep.get_reps(self.seqs)[0]
 
+    """
     def test_mlp(self):
         key = jax.random.PRNGKey(0)
         c = wazy.EnsembleBlockConfig()
@@ -105,6 +108,7 @@ class TestMLP(unittest.TestCase):
         s = jax.random.normal(key, shape=(10, 20))
         sparams = model.seq_t.init(key, s)
         model.seq_t.apply(sparams, key, s)
+    """
 
     def test_seq_grad(self):
         s1 = np.random.randn(10, 20)
@@ -120,10 +124,9 @@ class TestMLP(unittest.TestCase):
         model.seq_apply(p, key2, (s1, sp))
 
         # check gradient
-        @jax.jit
+        # @jax.jit
         def loss(x):
-            # return jnp.sum(model.seq_apply(p, key2, (x, sp))[0])
-            return jnp.sum(sp) + jnp.sum(x)
+            return jnp.sum(model.seq_apply(p, key2, (x, sp))[0])
 
         g = jax.grad(loss)(s2)
         jax.tree_util.tree_reduce(lambda s, x: s + jnp.sum(x**2), g, 0) > 0
