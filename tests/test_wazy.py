@@ -12,7 +12,7 @@ import jax
 import jax.numpy as jnp
 import functools
 
-"""
+
 class TestSeq(unittest.TestCase):
     def test_seqprop(self):
         def forward(x):
@@ -60,8 +60,6 @@ class TestUtils(unittest.TestCase):
         idx = wazy.resample(key, y, (3, 10))
         assert idx.shape == (3, 10)
 
-"""
-
 
 class TestMLP(unittest.TestCase):
     def setUp(self) -> None:
@@ -94,7 +92,6 @@ class TestMLP(unittest.TestCase):
         )
         self.reps = jax_unirep.get_reps(self.seqs)[0]
 
-    """
     def test_mlp(self):
         key = jax.random.PRNGKey(0)
         c = wazy.EnsembleBlockConfig()
@@ -108,7 +105,6 @@ class TestMLP(unittest.TestCase):
         s = jax.random.normal(key, shape=(10, 20))
         sparams = model.seq_t.init(key, s)
         model.seq_t.apply(sparams, key, s)
-    """
 
     def test_seq_grad(self):
         s1 = np.random.randn(10, 20)
