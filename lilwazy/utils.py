@@ -10,7 +10,7 @@ from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.bert.modeling_flax_bert import FlaxBertEncoder, FlaxBertPooler, FlaxBaseModelOutputWithPoolingAndCrossAttentions
 from typing import *
 from dataclasses import dataclass
-from flax.core.frozen_dict import unfreeze
+from flax.core.frozen_dict import unfreeze, freeze
 
 ALPHABET_robust_sf = sf.get_semantic_robust_alphabet() #Get the alphabet of robut symbols
 
@@ -28,47 +28,37 @@ def decode_useq(s):
 
 def decode_seq(s):
     indices = jnp.argmax(s, axis=1)
-    return [ALPHABET[i] for i in indices]
+    return [ALPHABET_robust_sf[i] for i in indices]
 
 
 def encode_seq(s):  # s is a list
-    e = np.zeros((len(s), len(ALPHABET)))
+    e = np.zeros((len(s), len(ALPHABET_robust_sf)))
     e[np.arange(len(s)), [ALPHABET.index(si) for si in s]] = 1
     return e
 
 
-def seq2useq(e):
-    return jnp.vstack((start_vec, e @ A2U))
 
-
-m = FlaxBertModel.from_pretrained('maykcaldas/selfies-bart')
-
-tokenizer = PreTrainedTokenizerFast.from_pretrained("maykcaldas/selfies-bart")
-tokenizer.tokenize_sfs = lambda batch: tokenizer([x.replace( "][", "] [" ) for x in batch],
-                                                padding=True,
-                                                truncation=True,
-                                                return_tensors="np")
 
 @dataclass
 class ConfigBert:
-  hidden_size : int         = 2048
-  num_hidden_layers : int   = 6
-  num_attention_heads : int = 8
-  intermediate_size : int   = 1024
-  hidden_act : str          = 'gelu'
+    hidden_size : int         = 512
+    num_hidden_layers : int   = 6
+    num_attention_heads : int = 8
+    intermediate_size : int   = 256
+    hidden_act : str          = 'gelu'
 
 c = ConfigBert()
 config = BertConfig(
-  vocab_size = tokenizer.vocab_size,
-  hidden_size = c.hidden_size,
-  num_hidden_layers = c.num_hidden_layers,
-  num_attention_heads = c.num_attention_heads,
-  intermediate_size = c.intermediate_size,
-  hidden_act = c.hidden_act,
-  # max_position_embeddings = 512,
-  # hidden_dropout_prob = 0.1,
-  # attention_probs_dropout_prob = 0.1,
-  pad_token_id = tokenizer.pad_token_id,
+    vocab_size = tokenizer.vocab_size,
+    hidden_size = c.hidden_size,
+    num_hidden_layers = c.num_hidden_layers,
+    num_attention_heads = c.num_attention_heads,
+    intermediate_size = c.intermediate_size,
+    hidden_act = c.hidden_act,
+    max_position_embeddings = 512,
+    #hidden_dropout_prob = 0.1,
+    # attention_probs_dropout_prob = 0.1,
+    pad_token_id = tokenizer.pad_token_id,
 )
 
 class DiffFlaxBertEmbeddings(nn.Module):
@@ -185,45 +175,45 @@ class DiffFlaxBertModule(nn.Module):
 
 
 
-def differentiable_jax_unirep(ohc_seq):
-    emb_params = unirep.load_embedding()
-    seq_embedding = jnp.stack([jnp.matmul(ohc_seq, emb_params)], axis=0)
-    _, mLSTM_apply_fun = unirep_layer.mLSTM(1900)
-    weight_params = unirep.load_params()[1]
-    h_final, _, outputs = jax.vmap(partial(mLSTM_apply_fun, weight_params))(
-        seq_embedding
-    )
-    h_avg = jnp.mean(outputs, axis=1)
-    return h_avg
 
-trained_model = FlaxBertModel.from_pretrained('maykcaldas/selfies-bart')
-# insert params from trained model to diff model
-diff_model = DiffFlaxBertModule(config)
-
-def jax_bert(tokens, trained_model, diff_model):
+def jax_bert_config():
+    tokenizer = PreTrainedTokenizerFast.from_pretrained("maykcaldas/selfies-bart")
+    tokenizer.tokenize_sfs = lambda batch: tokenizer([x.replace( "][", "] [" ) for x in batch],
+                                                padding='max_length',
+                                                truncation=True,
+                                                return_tensors="np")
+    trained_model = FlaxBertModel.from_pretrained('maykcaldas/selfies-bart')
+    # insert params from trained model to diff model
+    diff_model = DiffFlaxBertModule(config)
     # modify key order of tokens(from trained_model) to match the input order of diff_model
     order = ['ohc'] +list(tokens.keys()) + ['position_ids']
     tokens['ohc'] = jax.nn.one_hot(tokens['input_ids'], tokenizer.vocab_size)
     x = dict(**tokens, position_ids = np.arange(len(token['input_ids'])))
     x = {k: x[k] for k in order}
     del x['input_ids']
-    diff_params = diff_model.init(jax.random.PRNGKey(0), **x)
-    diff_params = unfreeze(diff_params)
-    M, N = diff_params['params']['embeddings']['word_embeddings']['kernel'].shape
-    for i in range(M):
-        for j in range(N):
-            diff_params['params']['embeddings']['word_embeddings']['kernel'].at[i,j].set(trained_model.params['embeddings']['word_embeddings']['embedding'][i,j])
-    diff_params = freeze(diff_params)
     
-    out = model.apply(diff_params, x)
+    diff_params = {}
+    diff_params['params'] = {}
+    diff_params['params']['encoder'] = trained_model.params['encoder']
+    diff_params['params']['pooler'] = trained_model.params['pooler']
+    diff_params['params']['embeddings'] = {}
+    diff_params['params']['embeddings']['word_embeddings'] = {}
+    diff_params['params']['embeddings']['word_embeddings']['kernel'] = trained_model.params['embeddings']['word_embeddings']['embedding']
+    diff_params['params']['embeddings']['position_embeddings'] = trained_model.params['embeddings']['position_embeddings']
+    diff_params['params']['embeddings']['token_type_embeddings'] = trained_model.params['embeddings']['token_type_embeddings']
+    diff_params['params']['embeddings']['LayerNorm'] = trained_model.params['embeddings']['LayerNorm']
+    diff_params = freeze(diff_params)
+    return diff_model, diff_params
+
+
+def differentiable_jax_bert(model, params, ohc):
+
+    #input dict {'ohc','token_type_ids','attention_mask', 'position_ids'}
+    input_dict = {'ohc': ohc, 'token_type_ids': np.zeros(ohc.shape()[0]), 'attention_mask': np.ones(ohc.shape()[0]), 'position_ids': np.arange(phc.shape()[0])}
+    out = model.apply(params, input_dict)
     reps = out['last_hidden_state']
     return reps
 
-def differentiable_jax_bert(model_apply, params, input_dict):
-    #input dict {'ohc','token_type_ids','attention_mask', 'position_ids'}
-    out_f = partial(model_apply, params, token_type_ids, attention_mask, position_ids)
-    reps = out_f(input_dict['ohc']).last_hidden_state
-    return reps
 
 def resample(key, y, output_shape, nclasses=10):
     """
