@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import jax_unirep.utils as unirep
 import jax_unirep.layers as unirep_layer
 from functools import partial
+import pickle
 
 ALPHABET_Unirep = [
     "-",
@@ -94,6 +95,11 @@ def differentiable_jax_unirep(ohc_seq):
     h_avg = jnp.mean(outputs, axis=1)
     return h_avg
 
+
+def solubility_score(rep):
+    with open('../wazy/coef.pickle', 'rb') as f:
+        coef = pickle.load(f)
+    return jnp.exp(jnp.sum(jnp.multiply(rep, coef))) / (1 + jnp.exp(jnp.sum(jnp.multiply(rep, coef))))
 
 def resample(key, y, output_shape, nclasses=10):
     """
