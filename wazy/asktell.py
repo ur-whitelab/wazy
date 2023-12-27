@@ -81,12 +81,19 @@ class BOAlgorithm:
         else:
             return encode_seq(seq).flatten()
 
+    def _get_bert(self, seq):
+        if self.mconfig.pretrained:
+            return get_reps([seq])[0][0]
+        else:
+            return encode_seq(seq).flatten()
+
+
     def tell(self, key, seq, label):
         if not self._ready:
             key, _ = jax.random.split(key)
             self._init(seq, label, key)
         self.seqs.append(seq)
-        self.reps.append(self._get_reps(seq))
+        self.reps.append(self._get_bert(seq))
         self.labels.append(label)
 
     def _maybe_train(self, key):

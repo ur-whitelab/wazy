@@ -3,6 +3,7 @@ import haiku as hk
 from .mlp import EnsembleBlock
 from .seq import SeqpropBlock
 from .utils import differentiable_jax_unirep, seq2useq, transform_var, ALPHABET
+from .utils import differentiable_jax_bert, bert_setup, seq2bseq
 import jax.numpy as jnp
 import jax
 
@@ -42,8 +43,8 @@ class EnsembleModel:
         def seq_forward(x):  # params is trained mlp params
             s = seq_only(x)
             if config.pretrained:
-                us = seq2useq(s)
-                u = differentiable_jax_unirep(us)
+                us = seq2bseq(s)
+                u = differentiable_jax_bert(us, self.bert_model.apply, self.bert_params)
             else:
                 u = s.flatten()
             mean, var, epi_var = model_forward(u, training=False)
@@ -55,6 +56,7 @@ class EnsembleModel:
             return s
 
         # transform functions
+        self.bert_model, self.bert_params = bert_setup()
         self.infer_t = hk.transform(model_forward)
         self.train_t = hk.transform(full_model_forward)
         self.seq_t = hk.transform(seq_forward)
