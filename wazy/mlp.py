@@ -355,12 +355,14 @@ def pool_bayes_opt(key, f, labels, rep_pool, cost_fxn=neg_bayesian_ucb):
     best = np.max(labels)
     for i, rep in enumerate(rep_pool):
         #x = get_reps(pep)[0]
-        curr_improve = cost_fxn(key, f, rep)
+        curr_improve = -1.0 * cost_fxn(key, f, rep, best)
+        #print(curr_improve)
         if curr_improve > max_improve:
             max_improve = curr_improve
             best_pep_idx = i
             best_rep = rep
-    return best_pep_idx, max_improve, f(key, best_rep)
+    #print(best_rep)
+    return best_pep_idx, f(key, best_rep)
 
 
 def exec_bayes_opt(
