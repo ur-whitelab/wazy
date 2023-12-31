@@ -1,0 +1,29 @@
+CUDA backend failed to initialize: Unable to load CUDA. Is it installed? (Set TF_CPP_MIN_LOG_LEVEL=0 and rerun for more info.)
+2023-12-30 18:55:44.465456: E external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:9261] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+2023-12-30 18:55:44.465553: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:607] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+2023-12-30 18:55:44.466502: E external/local_xla/xla/stream_executor/cuda/cuda_blas.cc:1515] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+2023-12-30 18:55:45.171465: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+/scratch/zyang43/myenvs/envs/wazy/lib/python3.9/site-packages/torch/_utils.py:776: UserWarning: TypedStorage is deprecated. It will be removed in the future and UntypedStorage will be the only storage class. This should only matter to you if you are using storages directly.  To access UntypedStorage directly, use tensor.untyped_storage() instead of tensor.storage()
+  return self.fget.__get__(instance, owner)()
+Some weights of the model checkpoint at Rostlab/prot_bert were not used when initializing FlaxBertModel: {('cls', 'predictions', 'transform', 'dense', 'bias'), ('cls', 'predictions', 'transform', 'LayerNorm', 'kernel'), ('cls', 'seq_relationship', 'kernel'), ('cls', 'predictions', 'decoder', 'kernel'), ('cls', 'seq_relationship', 'bias'), ('cls', 'predictions', 'decoder', 'bias'), ('cls', 'predictions', 'bias'), ('cls', 'predictions', 'transform', 'LayerNorm', 'bias'), ('cls', 'predictions', 'transform', 'dense', 'kernel')}
+- This IS expected if you are initializing FlaxBertModel from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
+- This IS NOT expected if you are initializing FlaxBertModel from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
+2023-12-30 18:55:52.962542: E external/local_xla/xla/stream_executor/cuda/cuda_driver.cc:274] failed call to cuInit: CUDA_ERROR_SYSTEM_DRIVER_MISMATCH: system has unsupported display driver / cuda driver combination
+2023-12-30 18:55:52.962756: E external/local_xla/xla/stream_executor/cuda/cuda_diagnostics.cc:244] kernel version 535.86.10 does not match DSO version 460.32.3 -- cannot find working devices in this configuration
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 3s 3s/step
+Some weights of the model checkpoint at Rostlab/prot_bert were not used when initializing FlaxBertModel: {('cls', 'predictions', 'transform', 'dense', 'bias'), ('cls', 'predictions', 'transform', 'LayerNorm', 'kernel'), ('cls', 'seq_relationship', 'kernel'), ('cls', 'predictions', 'decoder', 'kernel'), ('cls', 'seq_relationship', 'bias'), ('cls', 'predictions', 'decoder', 'bias'), ('cls', 'predictions', 'bias'), ('cls', 'predictions', 'transform', 'LayerNorm', 'bias'), ('cls', 'predictions', 'transform', 'dense', 'kernel')}
+- This IS expected if you are initializing FlaxBertModel from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
+- This IS NOT expected if you are initializing FlaxBertModel from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
+/scratch/zyang43/myenvs/envs/wazy/lib/python3.9/site-packages/haiku/_src/initializers.py:126: UserWarning: Explicitly requested dtype float64  is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+  unscaled = jax.random.truncated_normal(
+/scratch/zyang43/myenvs/envs/wazy/lib/python3.9/site-packages/haiku/_src/base.py:682: UserWarning: Explicitly requested dtype float64 requested in zeros is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+  param = init(shape, dtype)
+2023-12-30 18:58:53.920203: E external/xla/xla/service/slow_operation_alarm.cc:65] 
+********************************
+[Compiling module jit_step] Very slow compile? If you want to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+********************************
+2023-12-30 19:00:56.074085: E external/xla/xla/service/slow_operation_alarm.cc:133] The operation took 4m2.154069051s
+
+********************************
+[Compiling module jit_step] Very slow compile? If you want to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+********************************

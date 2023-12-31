@@ -1,0 +1,127 @@
+CUDA backend failed to initialize: Unable to load CUDA. Is it installed? (Set TF_CPP_MIN_LOG_LEVEL=0 and rerun for more info.)
+2023-12-29 21:02:05.408464: E external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:9261] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+2023-12-29 21:02:05.408550: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:607] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+2023-12-29 21:02:05.506273: E external/local_xla/xla/stream_executor/cuda/cuda_blas.cc:1515] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+2023-12-29 21:02:09.287670: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+/scratch/zyang43/myenvs/envs/wazy/lib/python3.9/site-packages/torch/_utils.py:776: UserWarning: TypedStorage is deprecated. It will be removed in the future and UntypedStorage will be the only storage class. This should only matter to you if you are using storages directly.  To access UntypedStorage directly, use tensor.untyped_storage() instead of tensor.storage()
+  return self.fget.__get__(instance, owner)()
+Some weights of the model checkpoint at Rostlab/prot_bert were not used when initializing FlaxBertModel: {('cls', 'predictions', 'transform', 'dense', 'bias'), ('cls', 'predictions', 'bias'), ('cls', 'predictions', 'transform', 'LayerNorm', 'bias'), ('cls', 'predictions', 'decoder', 'bias'), ('cls', 'predictions', 'decoder', 'kernel'), ('cls', 'predictions', 'transform', 'dense', 'kernel'), ('cls', 'seq_relationship', 'kernel'), ('cls', 'predictions', 'transform', 'LayerNorm', 'kernel'), ('cls', 'seq_relationship', 'bias')}
+- This IS expected if you are initializing FlaxBertModel from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
+- This IS NOT expected if you are initializing FlaxBertModel from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
+2023-12-29 21:02:22.595797: E external/local_xla/xla/stream_executor/cuda/cuda_driver.cc:274] failed call to cuInit: CUDA_ERROR_SYSTEM_DRIVER_MISMATCH: system has unsupported display driver / cuda driver combination
+2023-12-29 21:02:22.596143: E external/local_xla/xla/stream_executor/cuda/cuda_diagnostics.cc:244] kernel version 535.86.10 does not match DSO version 460.32.3 -- cannot find working devices in this configuration
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 3s 3s/step
+Some weights of the model checkpoint at Rostlab/prot_bert were not used when initializing FlaxBertModel: {('cls', 'predictions', 'transform', 'dense', 'bias'), ('cls', 'predictions', 'bias'), ('cls', 'predictions', 'transform', 'LayerNorm', 'bias'), ('cls', 'predictions', 'decoder', 'bias'), ('cls', 'predictions', 'decoder', 'kernel'), ('cls', 'predictions', 'transform', 'dense', 'kernel'), ('cls', 'seq_relationship', 'kernel'), ('cls', 'predictions', 'transform', 'LayerNorm', 'kernel'), ('cls', 'seq_relationship', 'bias')}
+- This IS expected if you are initializing FlaxBertModel from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
+- This IS NOT expected if you are initializing FlaxBertModel from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
+/scratch/zyang43/myenvs/envs/wazy/lib/python3.9/site-packages/haiku/_src/initializers.py:126: UserWarning: Explicitly requested dtype float64  is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+  unscaled = jax.random.truncated_normal(
+/scratch/zyang43/myenvs/envs/wazy/lib/python3.9/site-packages/haiku/_src/base.py:682: UserWarning: Explicitly requested dtype float64 requested in zeros is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+  param = init(shape, dtype)
+2023-12-29 21:05:16.640202: E external/xla/xla/service/slow_operation_alarm.cc:65] 
+********************************
+[Compiling module jit_step] Very slow compile? If you want to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+********************************
+2023-12-29 21:05:58.128619: E external/xla/xla/service/slow_operation_alarm.cc:133] The operation took 2m41.488610097s
+
+********************************
+[Compiling module jit_step] Very slow compile? If you want to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+********************************
+[0.00457561]
+(1, 15)
+(1, 15, 30)
+(1, 15)
+(1, 15, 30)
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 32ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 32ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528 0.00387657]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528 0.00387657 0.18537603]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528 0.00387657 0.18537603 0.00516232]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528 0.00387657 0.18537603 0.00516232
+ 0.11991318]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528 0.00387657 0.18537603 0.00516232
+ 0.11991318 0.69735688]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528 0.00387657 0.18537603 0.00516232
+ 0.11991318 0.69735688 0.01055904]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528 0.00387657 0.18537603 0.00516232
+ 0.11991318 0.69735688 0.01055904 0.00419554]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528 0.00387657 0.18537603 0.00516232
+ 0.11991318 0.69735688 0.01055904 0.00419554 0.00525422]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528 0.00387657 0.18537603 0.00516232
+ 0.11991318 0.69735688 0.01055904 0.00419554 0.00525422 0.00467249]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528 0.00387657 0.18537603 0.00516232
+ 0.11991318 0.69735688 0.01055904 0.00419554 0.00525422 0.00467249
+ 0.01634468]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528 0.00387657 0.18537603 0.00516232
+ 0.11991318 0.69735688 0.01055904 0.00419554 0.00525422 0.00467249
+ 0.01634468 0.00416587]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528 0.00387657 0.18537603 0.00516232
+ 0.11991318 0.69735688 0.01055904 0.00419554 0.00525422 0.00467249
+ 0.01634468 0.00416587 0.09382498]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step
+[0.00457561 0.16052514 0.00392528 0.00387657 0.18537603 0.00516232
+ 0.11991318 0.69735688 0.01055904 0.00419554 0.00525422 0.00467249
+ 0.01634468 0.00416587 0.09382498 0.54971224]
+(1, 15)
+(1, 15, 30)
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 31ms/step
+1/1 [==============================] - ETA: 0s1/1 [==============================] - 0s 30ms/step

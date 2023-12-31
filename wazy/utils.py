@@ -10,8 +10,9 @@ import flax.linen as nn
 from typing import Optional
 from transformers.models.bert.modeling_flax_bert import FlaxBertEncoder, FlaxBertPooler, FlaxBaseModelOutputWithPoolingAndCrossAttentions
 from flax.core.frozen_dict import unfreeze, freeze
-from transformers import AutoTokenizer
-
+from transformers import AutoTokenizer, FlaxBertModel
+from transformers.models.bert.modeling_flax_bert import FlaxBertEmbeddings
+from transformers.models.bert.configuration_bert import BertConfig
 tokenizer = AutoTokenizer.from_pretrained("Rostlab/prot_bert")
 
 ALPHABET_Bert_dict = tokenizer.get_vocab()
@@ -130,11 +131,13 @@ def bert_setup():
     params = freeze(melt_params)
     return diff_model, params
 
-def differentiable_jax_bert(ohc_seq, model_apply, params):
-    attention_mask = jnp.ones(ohc_seq.shape[:-1], dtype=jnp.int32)
-    return model_apply({'params': params}, ohc_seq, attention_mask)['last_hidden_state']
+def differentiable_jax_bert(model_apply, params, ohc_seq):
+    attention_mask = jnp.ones((ohc_seq.shape[:-1]), dtype=jnp.int32)
+    print(attention_mask.shape)
+    #print(params)
+    print(ohc_seq.shape)
+    return model_apply({'params': params}, ohc_seq, attention_mask)['pooler_output']
    
-
 def solubility_score(rep):
     '''
     trained with logistic regression in sklearn
@@ -156,6 +159,7 @@ def resample(key, y, output_shape, nclasses=10):
     Resample the given y-vector to have a uniform classes,
     where the classes are chosen via histogramming y.
     """
+    print(y)
     if type(output_shape) is int:
         output_shape = (output_shape,)
     if len(y.shape) == 1:

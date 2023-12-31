@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import numpy as np
 from functools import partial
 import jax
+from transformers import FlaxBertModel, AutoTokenizer
 from jax_unirep import get_reps
 from wazy.utils import ALPHABET
 from .mlp import (
@@ -16,7 +17,7 @@ from .mlp import (
     setup_bayes_opt,
     setup_ensemble_train,
 )
-from .utils import ALPHABET, decode_seq, encode_seq
+from .utils import ALPHABET, decode_seq, encode_seq, bert_setup, differentiable_jax_bert
 from .e2e import EnsembleModel
 
 
@@ -69,6 +70,8 @@ class BOAlgorithm:
             alg_config = AlgConfig()
         self.aconfig = alg_config
         self.mconfig = model_config
+        self.bert_model = FlaxBertModel.from_pretrained("Rostlab/prot_bert", from_pt=True)
+        self.tokenizer = AutoTokenizer.from_pretrained("Rostlab/prot_bert")
         self._ready = False
         self._trained = 0
         self._train_step = None
@@ -83,7 +86,9 @@ class BOAlgorithm:
 
     def _get_bert(self, seq):
         if self.mconfig.pretrained:
-            return get_reps([seq])[0][0]
+            bert_seq = ' '.join(list(seq))
+            tokens = self.tokenizer(bert_seq, return_tensors="jax")
+            return self.bert_model(**tokens).pooler_output[0]
         else:
             return encode_seq(seq).flatten()
 
@@ -119,7 +124,7 @@ class BOAlgorithm:
             raise Exception("Must call tell once before predict")
         self._maybe_train(key)
         key = jax.random.split(key)[0]
-        x = self._get_reps(seq)
+        x = self._get_bert(seq)
         return self.model.infer_t.apply(self.params, key, x, training=False)
 
     def ask(self, key, aq_fxn=None, length=None, return_seqs=1):

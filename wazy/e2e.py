@@ -1,5 +1,6 @@
 from wazy.mlp import NaiveBlock
 import haiku as hk
+from functools import partial
 from .mlp import EnsembleBlock
 from .seq import SeqpropBlock
 from .utils import differentiable_jax_unirep, seq2useq, transform_var, ALPHABET
@@ -22,6 +23,8 @@ def tree_transpose(list_of_trees):
 
 class EnsembleModel:
     def __init__(self, config):
+        self.bert_model, self.bert_params = bert_setup()
+
         def full_model_forward(x, training=True):
             e = EnsembleBlock(config)
             return e(x, training)
@@ -44,7 +47,8 @@ class EnsembleModel:
             s = seq_only(x)
             if config.pretrained:
                 us = seq2bseq(s)
-                u = differentiable_jax_bert(us, self.bert_model.apply, self.bert_params)
+                us = jnp.expand_dims(us, axis=0)
+                u = partial(differentiable_jax_bert, self.bert_model.apply, self.bert_params)(us)
             else:
                 u = s.flatten()
             mean, var, epi_var = model_forward(u, training=False)
@@ -56,7 +60,6 @@ class EnsembleModel:
             return s
 
         # transform functions
-        self.bert_model, self.bert_params = bert_setup()
         self.infer_t = hk.transform(model_forward)
         self.train_t = hk.transform(full_model_forward)
         self.seq_t = hk.transform(seq_forward)
