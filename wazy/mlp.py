@@ -347,6 +347,24 @@ def setup_bayes_opt(f, cost_fxn=neg_bayesian_ucb, aconfig: AlgConfig = None):
     return step
 
 
+def pool_bayes_opt(key, f, labels, rep_pool, cost_fxn=neg_bayesian_ucb):
+    # f -> mlp itself
+    max_improve = 0.0
+    best_pep_idx = 0
+    best_rep = None
+    best = np.max(labels)
+    for i, rep in enumerate(rep_pool):
+        #x = get_reps(pep)[0]
+        curr_improve = -1.0 * cost_fxn(key, f, rep, best)
+        #print(curr_improve)
+        if curr_improve > max_improve:
+            max_improve = curr_improve
+            best_pep_idx = i
+            best_rep = rep
+    #print(best_rep)
+    return best_pep_idx, f(key, best_rep)
+
+
 def exec_bayes_opt(
     key, labels, init_x, aconfig: AlgConfig = None, step: Callable = None
 ):

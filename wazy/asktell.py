@@ -15,6 +15,7 @@ from .mlp import (
     neg_bayesian_max,
     setup_bayes_opt,
     setup_ensemble_train,
+    pool_bayes_opt,
 )
 from .utils import ALPHABET, decode_seq, encode_seq
 from .e2e import EnsembleModel
@@ -98,7 +99,7 @@ class BOAlgorithm:
             self.params, train_loss = exec_ensemble_train(
                 key,
                 self.model.train_t,
-                self.mconfig,
+                 self.mconfig,
                 np.array(self.reps, dtype=float),
                 np.array(self.labels, dtype=float),
                 aconfig=self.aconfig,
@@ -150,6 +151,7 @@ class BOAlgorithm:
             start_seq = encode_seq(start_seq)
         sparams = self.model.seq_t.init(key, s)
         key, _ = jax.random.split(key)
+        
         x0 = self.model.random_seqs(
             key, self.aconfig.bo_batch_size, sparams, length, start_seq
         )
@@ -158,6 +160,7 @@ class BOAlgorithm:
             partial(self.model.seq_apply, self.params),
             in_axes=(None, 0),
         )
+        
         # do Bayes Opt and save best result only
         key, _ = jax.random.split(key)
         if self._bo_step is None:
@@ -165,6 +168,8 @@ class BOAlgorithm:
         batched_v, bo_loss, bo_key = exec_bayes_opt(
             key, np.array(self.labels, dtype=float), x0, self.aconfig, self._bo_step
         )
+       
+        #best_pep_idx, max_improve, pred_y = pool_bayes_opt(key, g, self.labels, rep_pool)
         # find best result, not already measured
         seq = None
         min_idxs = jnp.argsort(jnp.squeeze(bo_loss[-1]))
@@ -191,6 +196,20 @@ class BOAlgorithm:
         if return_seqs == 1:
             return filtered_out_seqs[0], filtered_out_loss[0]
         return filtered_out_seqs[:return_seqs], filtered_out_loss[:return_seqs]
+
+    def pool_ask(self, key, pool, aq_fxn=None, length=None, return_seqs=1):
+        if not self._ready:
+            raise Exception("Must call tell once before ask")
+        if aq_fxn is None:
+            aq_fxn = self.aconfig.bo_aq_fxn
+        if aq_fxn == "ucb":
+            aq = neg_bayesian_ucb
+        elif aq_fxn == "ei":
+            aq = neg_bayesian_ei
+        self._maybe_train(key)
+        f = partial(self.model.infer_t.apply, self.params)
+        best_pep_idx,  pred_y = pool_bayes_opt(key, f, self.labels, pool)
+        return best_pep_idx, pred_y[0:]
 
     def batch_ask(self, key, N, aq_fxn="ucb", lengths=None, return_seqs=1):
         """Batch asking iteratively asking and telling min value
